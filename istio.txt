@@ -1,0 +1,118 @@
+# Runbook: Scraping Spring Boot metrics with Google Managed Prometheus under Istio/ASM STRICT mTLS
+
+## Problem
+
+GMP scrape of the application metrics endpoint (`/actuator/prometheus`) shows `up=0`,
+while the Envoy metrics endpoint (`http-envoy-prom`, port 15090) shows `up=1` and the
+actuator endpoint returns valid metrics when accessed manually.
+
+**Root cause:** the GMP collector runs outside the mesh and scrapes the pod IP over
+plaintext HTTP. Under STRICT mTLS the Istio sidecar intercepts inbound traffic on the
+app port and rejects the plaintext connection. The app never sees the scrape.
+
+## Fix: Istio metrics merging
+
+The Istio pilot-agent fetches the app's metrics over localhost (bypassing mTLS/iptables),
+merges them with Envoy's own metrics, and serves the combined output on
+`:15020/stats/prometheus` — a port Istio excludes from interception so plaintext
+scrapers can reach it.
+
+### Step 1 — Pod template annotations (Helm chart)
+
+Add under `spec.template.metadata.annotations` in the Deployment template:
+
+```yaml
+prometheus.io/scrape: "true"
+prometheus.io/port: "<APP_METRICS_PORT>"          # e.g. "8080"
+prometheus.io/path: /actuator/prometheus
+```
+
+Deploy and wait for rollout:
+
+```bash
+kubectl rollout status deployment <DEPLOYMENT_NAME> -n <NAMESPACE>
+```
+
+> Note: after injection, Istio REWRITES these annotations on the running pod to
+> `port: "15020"` / `path: "/stats/prometheus"`. This is expected and confirms merging
+> is active. The original values are preserved in the sidecar's
+> `ISTIO_PROMETHEUS_ANNOTATIONS` env var.
+
+### Step 2 — Verify the agent captured the original annotation values
+
+```bash
+kubectl get pod -n <NAMESPACE> -l app=<APP_LABEL> \
+  -o jsonpath='{.items[0].spec.containers[?(@.name=="istio-proxy")].env[?(@.name=="ISTIO_PROMETHEUS_ANNOTATIONS")].value}'
+```
+
+Expected output:
+
+```json
+{"scrape":"true","path":"/actuator/prometheus","port":"<APP_METRICS_PORT>"}
+```
+
+### Step 3 — Verify merged metrics are served on 15020
+
+```bash
+kubectl port-forward deploy/<DEPLOYMENT_NAME> -n <NAMESPACE> 15020:15020
+```
+
+In a second terminal:
+
+```bash
+# bash
+curl -s http://localhost:15020/stats/prometheus | grep -i jvm
+```
+
+```powershell
+# PowerShell
+curl.exe -s http://localhost:15020/stats/prometheus | Select-String jvm
+```
+
+Success = application metrics (`jvm_*`, `http_server_*`) appear alongside Envoy metrics.
+
+If nothing appears, check whether merging is enabled mesh-wide:
+
+```bash
+kubectl get cm istio -n istio-system -o yaml | grep -i enablePrometheusMerge
+```
+
+### Step 4 — Point PodMonitoring at the merged endpoint
+
+Replace existing endpoints with a single one (avoids double-ingesting Envoy metrics
+if a 15090 endpoint was previously configured):
+
+```yaml
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: <POD_MONITOR_NAME>
+  namespace: <NAMESPACE>
+spec:
+  selector:
+    matchLabels:
+      <SELECTOR_LABEL>: <SELECTOR_VALUE>
+  endpoints:
+    - port: 15020
+      path: /stats/prometheus
+      interval: 30s
+```
+
+### Step 5 — Final verification
+
+- Scrape target shows `up=1`
+- App metrics (e.g. `jvm_memory_used_bytes`) queryable in Cloud Monitoring
+- Istio metrics (`istio_requests_total`) still flowing via the same endpoint
+
+## Why not `traffic.sidecar.istio.io/excludeInboundPorts` on the app port?
+
+Excluding the app port removes ALL inbound traffic on it from the mesh — no mTLS, no
+AuthorizationPolicies — not just the scrape. Only acceptable for a dedicated
+metrics-only port (e.g. Spring Boot `management.server.port`). If the app serves
+traffic and metrics on the same port, use metrics merging instead.
+
+## Long-term cleanup (optional)
+
+Move the actuator to a dedicated management port (`management.server.port`), declare it
+as a named container port, exclude only that port from interception, and point
+PodMonitoring at it directly. This isolates metrics from app traffic entirely.
