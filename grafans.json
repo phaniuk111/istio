@@ -1,0 +1,372 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "title": "Prod Support - Spring Boot Service Health",
+  "uid": "prod-support-springboot",
+  "tags": ["prod-support", "jvm", "spring-boot", "gmp"],
+  "time": { "from": "now-3h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      { "name": "datasource", "type": "datasource", "query": "prometheus", "label": "Datasource", "current": {} },
+      {
+        "name": "namespace", "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(jvm_memory_used_bytes, namespace)",
+        "label": "Namespace", "refresh": 2, "sort": 1, "current": {}
+      },
+      {
+        "name": "pod", "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(jvm_memory_used_bytes{namespace=\"$namespace\"}, pod)",
+        "label": "Pod", "refresh": 2, "sort": 1, "multi": true, "includeAll": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+
+    { "type": "row", "title": "Traffic & Errors (app-reported - source of truth)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false, "panels": [] },
+
+    {
+      "type": "stat",
+      "title": "Total Requests (selected range)",
+      "description": "TOTAL requests processed by the app over the selected time range, counted by Spring Boot itself (http_server_requests). Changes with the time picker. Actuator/health traffic excluded.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "targets": [
+        { "expr": "sum(increase(http_server_requests_seconds_count{namespace=\"$namespace\", pod=~\"$pod\", uri!~\"/actuator.*\"}[$__range]))", "legendFormat": "total", "instant": true }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
+    {
+      "type": "stat",
+      "title": "Success Rate % (selected range)",
+      "description": "Non-5xx as % of all requests over the range.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "targets": [
+        { "expr": "100 * (1 - (sum(increase(http_server_requests_seconds_count{namespace=\"$namespace\", pod=~\"$pod\", status=~\"5..\", uri!~\"/actuator.*\"}[$__range])) or vector(0)) / sum(increase(http_server_requests_seconds_count{namespace=\"$namespace\", pod=~\"$pod\", uri!~\"/actuator.*\"}[$__range])))", "legendFormat": "success", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "decimals": 2, "min": 0, "max": 100,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red", "value": null },
+            { "color": "yellow", "value": 99 },
+            { "color": "green", "value": 99.9 }
+          ] }
+        }, "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "type": "stat",
+      "title": "5xx Count (selected range)",
+      "description": "Total server errors over the range. Anything > 0 deserves a look at the Failing Endpoints table below.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "targets": [
+        { "expr": "sum(increase(http_server_requests_seconds_count{namespace=\"$namespace\", pod=~\"$pod\", status=~\"5..\", uri!~\"/actuator.*\"}[$__range])) or vector(0)", "legendFormat": "5xx", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short", "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "red", "value": 1 }
+          ] }
+        }, "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "type": "stat",
+      "title": "Avg Latency (selected range)",
+      "description": "Mean latency across all requests in the range (sum/count - exact, no histogram estimation). Per-endpoint breakdown in the table below.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "targets": [
+        { "expr": "1000 * sum(increase(http_server_requests_seconds_sum{namespace=\"$namespace\", pod=~\"$pod\", uri!~\"/actuator.*\"}[$__range])) / sum(increase(http_server_requests_seconds_count{namespace=\"$namespace\", pod=~\"$pod\", uri!~\"/actuator.*\"}[$__range]))", "legendFormat": "avg", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms", "decimals": 1,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 500 },
+            { "color": "red", "value": 1000 }
+          ] }
+        }, "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Request Rate by Status Class",
+      "description": "Req/s split 2xx/3xx/4xx/5xx. Stacked - total height = overall throughput.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "sum by (code_class) (label_replace(rate(http_server_requests_seconds_count{namespace=\"$namespace\", pod=~\"$pod\", uri!~\"/actuator.*\"}[5m]), \"code_class\", \"$1xx\", \"status\", \"(\\\\d).*\"))", "legendFormat": "{{code_class}}" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "fillOpacity": 15, "stacking": { "mode": "normal" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "5xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] },
+          { "matcher": { "id": "byName", "options": "4xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "2xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency - Avg and Slowest Request (max)",
+      "description": "Avg = exact mean over 5m windows. Max = the single slowest request seen (gauge decays between scrapes). Avg flat + max spiking = a few outlier requests; both rising = systemic slowdown (check GC Time % and CPU below).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        { "expr": "1000 * sum(rate(http_server_requests_seconds_sum{namespace=\"$namespace\", pod=~\"$pod\", uri!~\"/actuator.*\"}[5m])) / sum(rate(http_server_requests_seconds_count{namespace=\"$namespace\", pod=~\"$pod\", uri!~\"/actuator.*\"}[5m]))", "legendFormat": "avg" },
+        { "expr": "1000 * max(http_server_requests_seconds_max{namespace=\"$namespace\", pod=~\"$pod\", uri!~\"/actuator.*\"})", "legendFormat": "slowest request" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "fillOpacity": 5 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "slowest request" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }, { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [6, 6] } }] }
+        ]
+      }
+    },
+
+    { "type": "row", "title": "Per-Endpoint Breakdown", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }, "collapsed": false, "panels": [] },
+
+    {
+      "type": "table",
+      "title": "Endpoint Summary (selected range) - sort by any column",
+      "description": "Per-URI totals over the selected range: calls, avg latency, 5xx. First stop for 'which API is the problem'. Actuator and unmatched routes excluded.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 15 },
+      "targets": [
+        { "expr": "sum by (uri, method) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", pod=~\"$pod\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range]))", "instant": true, "format": "table", "refId": "A" },
+        { "expr": "1000 * sum by (uri, method) (increase(http_server_requests_seconds_sum{namespace=\"$namespace\", pod=~\"$pod\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range])) / sum by (uri, method) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", pod=~\"$pod\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range]))", "instant": true, "format": "table", "refId": "B" },
+        { "expr": "sum by (uri, method) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", pod=~\"$pod\", status=~\"5..\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range]))", "instant": true, "format": "table", "refId": "C" },
+        { "expr": "1000 * max by (uri, method) (http_server_requests_seconds_max{namespace=\"$namespace\", pod=~\"$pod\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"})", "instant": true, "format": "table", "refId": "D" }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": {
+            "renameByName": { "Value #A": "Total Calls", "Value #B": "Avg Latency (ms)", "Value #C": "5xx Count", "Value #D": "Slowest (ms)", "uri": "Endpoint", "method": "Method" },
+            "excludeByName": { "Time": true }
+        } },
+        { "id": "sortBy", "options": { "sort": [{ "field": "Total Calls", "desc": true }] } }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Avg Latency (ms)" }, "properties": [
+            { "id": "unit", "value": "ms" }, { "id": "decimals", "value": 1 },
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "green", "value": null }, { "color": "yellow", "value": 500 }, { "color": "red", "value": 1000 } ] } } ] },
+          { "matcher": { "id": "byName", "options": "Slowest (ms)" }, "properties": [
+            { "id": "unit", "value": "ms" }, { "id": "decimals", "value": 0 } ] },
+          { "matcher": { "id": "byName", "options": "5xx Count" }, "properties": [
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } ] }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Top Endpoints by Request Rate",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 25 },
+      "targets": [
+        { "expr": "topk(10, sum by (uri) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", pod=~\"$pod\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[5m])))", "legendFormat": "{{uri}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Slowest Endpoints (avg, 5m)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 25 },
+      "targets": [
+        { "expr": "topk(10, 1000 * sum by (uri) (rate(http_server_requests_seconds_sum{namespace=\"$namespace\", pod=~\"$pod\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[5m])) / sum by (uri) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", pod=~\"$pod\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[5m])))", "legendFormat": "{{uri}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Failing Endpoints (5xx rate by URI)",
+      "description": "Only shows URIs currently returning 5xx. Empty panel = no errors.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 25 },
+      "targets": [
+        { "expr": "sum by (uri, status) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", pod=~\"$pod\", status=~\"5..\"}[5m])) > 0", "legendFormat": "{{uri}} {{status}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10 }, "color": { "mode": "fixed", "fixedColor": "red" } }, "overrides": [] }
+    },
+
+    { "type": "row", "title": "JVM at a glance", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 }, "collapsed": false, "panels": [] },
+
+    {
+      "type": "stat",
+      "title": "Heap Usage %",
+      "description": "Sustained > 85% = memory pressure.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 34 },
+      "targets": [
+        { "expr": "100 * sum by (pod) (jvm_memory_used_bytes{namespace=\"$namespace\", pod=~\"$pod\", area=\"heap\"}) / sum by (pod) (jvm_memory_max_bytes{namespace=\"$namespace\", pod=~\"$pod\", area=\"heap\"})", "legendFormat": "{{pod}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 85 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "type": "stat",
+      "title": "Process CPU %",
+      "description": "Sustained > 80% = CPU saturation.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 34 },
+      "targets": [
+        { "expr": "100 * max by (pod) (process_cpu_usage{namespace=\"$namespace\", pod=~\"$pod\"})", "legendFormat": "{{pod}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 60 }, { "color": "red", "value": 80 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "type": "stat",
+      "title": "GC Time % (5m)",
+      "description": "> 5% = GC pressure; correlates with latency spikes, precedes OOM.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 34 },
+      "targets": [
+        { "expr": "100 * sum by (pod) (rate(jvm_gc_pause_seconds_sum{namespace=\"$namespace\", pod=~\"$pod\"}[5m]))", "legendFormat": "{{pod}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 2 }, { "color": "red", "value": 5 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "type": "stat",
+      "title": "Live Threads",
+      "description": "Unbounded growth = thread leak.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 34 },
+      "targets": [
+        { "expr": "max by (pod) (jvm_threads_live_threads{namespace=\"$namespace\", pod=~\"$pod\"})", "legendFormat": "{{pod}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
+
+    { "type": "row", "title": "Memory", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 }, "collapsed": false, "panels": [] },
+
+    {
+      "type": "timeseries",
+      "title": "Heap Used vs Max",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "targets": [
+        { "expr": "sum by (pod) (jvm_memory_used_bytes{namespace=\"$namespace\", pod=~\"$pod\", area=\"heap\"})", "legendFormat": "used {{pod}}" },
+        { "expr": "sum by (pod) (jvm_memory_max_bytes{namespace=\"$namespace\", pod=~\"$pod\", area=\"heap\"})", "legendFormat": "max {{pod}}" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "max .*" }, "properties": [
+            { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } },
+            { "id": "custom.fillOpacity", "value": 0 } ] }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Heap Pools (leak detector)",
+      "description": "Old gen / tenured climbing monotonically without post-GC drops = memory leak.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "targets": [
+        { "expr": "jvm_memory_used_bytes{namespace=\"$namespace\", pod=~\"$pod\", area=\"heap\"}", "legendFormat": "{{pod}} {{id}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Non-Heap (metaspace, code cache)",
+      "description": "Metaspace growing forever = classloader leak.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+      "targets": [
+        { "expr": "jvm_memory_used_bytes{namespace=\"$namespace\", pod=~\"$pod\", area=\"nonheap\"}", "legendFormat": "{{pod}} {{id}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "GC Pause Rate & Max Pause",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
+      "targets": [
+        { "expr": "sum by (pod, action) (rate(jvm_gc_pause_seconds_count{namespace=\"$namespace\", pod=~\"$pod\"}[5m]))", "legendFormat": "{{pod}} {{action}} rate" },
+        { "expr": "max by (pod) (jvm_gc_pause_seconds_max{namespace=\"$namespace\", pod=~\"$pod\"})", "legendFormat": "{{pod}} max pause (s)" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    },
+
+    { "type": "row", "title": "CPU & Threads", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 56 }, "collapsed": false, "panels": [] },
+
+    {
+      "type": "timeseries",
+      "title": "CPU - Process vs System",
+      "description": "High process CPU + healthy heap = CPU-bound work. High process CPU + high GC Time % = GC thrash (undersized heap).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 57 },
+      "targets": [
+        { "expr": "100 * max by (pod) (process_cpu_usage{namespace=\"$namespace\", pod=~\"$pod\"})", "legendFormat": "process {{pod}}" },
+        { "expr": "100 * max by (pod) (system_cpu_usage{namespace=\"$namespace\", pod=~\"$pod\"})", "legendFormat": "system {{pod}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 10 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Threads - Live / Daemon / Peak",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 57 },
+      "targets": [
+        { "expr": "max by (pod) (jvm_threads_live_threads{namespace=\"$namespace\", pod=~\"$pod\"})", "legendFormat": "live {{pod}}" },
+        { "expr": "max by (pod) (jvm_threads_daemon_threads{namespace=\"$namespace\", pod=~\"$pod\"})", "legendFormat": "daemon {{pod}}" },
+        { "expr": "max by (pod) (jvm_threads_peak_threads{namespace=\"$namespace\", pod=~\"$pod\"})", "legendFormat": "peak {{pod}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    },
+
+    { "type": "row", "title": "Supporting signals", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 65 }, "collapsed": false, "panels": [] },
+
+    {
+      "type": "timeseries",
+      "title": "Loaded Classes",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 66 },
+      "targets": [
+        { "expr": "max by (pod) (jvm_classes_loaded_classes{namespace=\"$namespace\", pod=~\"$pod\"})", "legendFormat": "{{pod}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Open File Descriptors",
+      "description": "Climbing toward max = socket/file leak.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 66 },
+      "targets": [
+        { "expr": "max by (pod) (process_files_open_files{namespace=\"$namespace\", pod=~\"$pod\"})", "legendFormat": "open {{pod}}" },
+        { "expr": "max by (pod) (process_files_max_files{namespace=\"$namespace\", pod=~\"$pod\"})", "legendFormat": "max {{pod}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    }
+  ]
+}
