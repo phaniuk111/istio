@@ -16,16 +16,26 @@
         "datasource": { "type": "prometheus", "uid": "${datasource}" },
         "query": "label_values(jvm_memory_used_bytes, namespace)",
         "label": "Namespace", "refresh": 2, "sort": 1, "current": {}
+      },
+      {
+        "name": "nodepool_filter", "type": "textbox",
+        "label": "Nodepool match (tenant id)",
+        "description": "Stable portion of the node name for your dedicated nodepool. Environment-independent - cluster name and node hash are wildcarded.",
+        "query": "173952-1-eod",
+        "current": { "text": "173952-1-eod", "value": "173952-1-eod" }
       }
     ]
   },
   "panels": [
+
+    { "type": "row", "title": "Service Health & Sizing", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false, "panels": [] },
+
     {
       "type": "table",
-      "title": "Service Health & Sizing - one row per service",
-      "description": "'-' = no data (app metrics not yet enabled for that service). Limit columns come from GKE native metrics and show the WORST replica (max), because one pod at 95% of its limit is an OOMKill risk regardless of its siblings. Memory uses non-evictable only - that is what the OOM killer counts. istio-proxy excluded throughout.",
+      "title": "All Services - health, sizing and stability",
+      "description": "'-' = no data (app metrics not enabled for that service yet). LIMIT columns drive throttling/OOMKills; REQUEST columns drive scheduling and reserve nodepool capacity. CPU columns are a 5m MAX so burst plateaus are visible (an instant read hides them). All resource columns show the WORST replica. Memory = non-evictable only. istio-proxy excluded.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 13, "w": 24, "x": 0, "y": 0 },
+      "gridPos": { "h": 13, "w": 24, "x": 0, "y": 1 },
       "targets": [
         { "refId": "A", "instant": true, "format": "table",
           "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[5m]))" },
@@ -40,207 +50,251 @@
         { "refId": "F", "instant": true, "format": "table",
           "expr": "100 * max by (app) (label_replace(kubernetes_io:container_memory_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
         { "refId": "G", "instant": true, "format": "table",
-          "expr": "100 * max by (app) (label_replace(kubernetes_io:container_cpu_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
+          "expr": "100 * max by (app) (label_replace(kubernetes_io:container_memory_request_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
         { "refId": "H", "instant": true, "format": "table",
-          "expr": "100 * max by (app) (label_replace(rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")) / max by (app) (label_replace(rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
+          "expr": "100 * max by (app) (label_replace(max_over_time(kubernetes_io:container_cpu_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}[5m]), \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
         { "refId": "I", "instant": true, "format": "table",
-          "expr": "max by (app) (label_replace(container_memory_working_set_bytes{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}, \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" }
+          "expr": "100 * max by (app) (label_replace(max_over_time(kubernetes_io:container_cpu_request_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}[5m]), \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
+        { "refId": "J", "instant": true, "format": "table",
+          "expr": "100 * max by (app) (label_replace(rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")) / max by (app) (label_replace(rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
+        { "refId": "K", "instant": true, "format": "table",
+          "expr": "max by (app) (label_replace(kubernetes_io:container_restart_count{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" }
       ],
       "transformations": [
         { "id": "merge", "options": {} },
         { "id": "organize", "options": {
             "indexByName": {
-              "app": 0,
-              "Value #A": 1,
-              "Value #B": 2,
-              "Value #C": 3,
-              "Value #D": 4,
-              "Value #E": 5,
-              "Value #F": 6,
-              "Value #G": 7,
-              "Value #H": 8,
-              "Value #I": 9
+              "app": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #D": 4, "Value #E": 5,
+              "Value #F": 6, "Value #G": 7, "Value #H": 8, "Value #I": 9, "Value #J": 10, "Value #K": 11
             },
             "renameByName": {
               "app": "Service",
               "Value #A": "Req/s",
-              "Value #B": "5xx (range)",
-              "Value #C": "Avg Latency (ms)",
+              "Value #B": "5xx",
+              "Value #C": "Latency (ms)",
               "Value #D": "Heap %",
-              "Value #E": "GC Time %",
-              "Value #F": "Mem % of Limit",
-              "Value #G": "CPU % of Limit",
-              "Value #H": "CPU Throttle %",
-              "Value #I": "Mem Used (pod)"
+              "Value #E": "GC %",
+              "Value #F": "Mem % Limit",
+              "Value #G": "Mem % Req",
+              "Value #H": "CPU % Limit",
+              "Value #I": "CPU % Req",
+              "Value #J": "Throttle %",
+              "Value #K": "Restarts"
             },
             "excludeByName": { "Time": true }
         } },
-        { "id": "sortBy", "options": { "sort": [{ "field": "Mem % of Limit", "desc": true }] } }
+        { "id": "sortBy", "options": { "sort": [{ "field": "Restarts", "desc": true }] } }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "short", "decimals": 2, "noValue": "-" },
+        "defaults": { "unit": "short", "decimals": 1, "noValue": "-" },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "5xx (range)" }, "properties": [
+          { "matcher": { "id": "byName", "options": "5xx" }, "properties": [
             { "id": "decimals", "value": 0 }, { "id": "noValue", "value": "-" },
             { "id": "custom.cellOptions", "value": { "type": "color-background" } },
             { "id": "thresholds", "value": { "mode": "absolute", "steps": [
               { "color": "transparent", "value": null }, { "color": "green", "value": 0 }, { "color": "red", "value": 1 } ] } } ] },
-          { "matcher": { "id": "byName", "options": "Avg Latency (ms)" }, "properties": [
-            { "id": "unit", "value": "ms" }, { "id": "decimals", "value": 1 }, { "id": "noValue", "value": "-" },
+          { "matcher": { "id": "byName", "options": "Latency (ms)" }, "properties": [
+            { "id": "unit", "value": "ms" }, { "id": "noValue", "value": "-" },
             { "id": "custom.cellOptions", "value": { "type": "color-background" } },
             { "id": "thresholds", "value": { "mode": "absolute", "steps": [
               { "color": "transparent", "value": null }, { "color": "green", "value": 0 }, { "color": "yellow", "value": 500 }, { "color": "red", "value": 1000 } ] } } ] },
           { "matcher": { "id": "byName", "options": "Heap %" }, "properties": [
-            { "id": "unit", "value": "percent" }, { "id": "decimals", "value": 1 }, { "id": "noValue", "value": "-" },
+            { "id": "unit", "value": "percent" }, { "id": "noValue", "value": "-" },
             { "id": "custom.cellOptions", "value": { "type": "color-background" } },
             { "id": "thresholds", "value": { "mode": "absolute", "steps": [
               { "color": "transparent", "value": null }, { "color": "green", "value": 0 }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 85 } ] } } ] },
-          { "matcher": { "id": "byName", "options": "GC Time %" }, "properties": [
+          { "matcher": { "id": "byName", "options": "GC %" }, "properties": [
             { "id": "unit", "value": "percent" }, { "id": "decimals", "value": 2 }, { "id": "noValue", "value": "-" },
             { "id": "custom.cellOptions", "value": { "type": "color-background" } },
             { "id": "thresholds", "value": { "mode": "absolute", "steps": [
               { "color": "transparent", "value": null }, { "color": "green", "value": 0 }, { "color": "yellow", "value": 2 }, { "color": "red", "value": 5 } ] } } ] },
-          { "matcher": { "id": "byName", "options": "Mem % of Limit" }, "properties": [
-            { "id": "unit", "value": "percent" }, { "id": "decimals", "value": 1 }, { "id": "noValue", "value": "-" },
+          { "matcher": { "id": "byName", "options": "Mem % Limit" }, "properties": [
+            { "id": "unit", "value": "percent" }, { "id": "noValue", "value": "-" },
             { "id": "custom.cellOptions", "value": { "type": "color-background" } },
             { "id": "thresholds", "value": { "mode": "absolute", "steps": [
-              { "color": "transparent", "value": null },
-              { "color": "blue", "value": 0 },
-              { "color": "green", "value": 25 },
-              { "color": "yellow", "value": 75 },
-              { "color": "red", "value": 90 } ] } } ] },
-          { "matcher": { "id": "byName", "options": "CPU % of Limit" }, "properties": [
-            { "id": "unit", "value": "percent" }, { "id": "decimals", "value": 1 }, { "id": "noValue", "value": "-" },
+              { "color": "transparent", "value": null }, { "color": "blue", "value": 0 }, { "color": "green", "value": 25 }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 } ] } } ] },
+          { "matcher": { "id": "byName", "options": "Mem % Req" }, "properties": [
+            { "id": "unit", "value": "percent" }, { "id": "noValue", "value": "-" },
             { "id": "custom.cellOptions", "value": { "type": "color-background" } },
             { "id": "thresholds", "value": { "mode": "absolute", "steps": [
-              { "color": "transparent", "value": null },
-              { "color": "blue", "value": 0 },
-              { "color": "green", "value": 25 },
-              { "color": "yellow", "value": 75 },
-              { "color": "red", "value": 90 } ] } } ] },
-          { "matcher": { "id": "byName", "options": "CPU Throttle %" }, "properties": [
-            { "id": "unit", "value": "percent" }, { "id": "decimals", "value": 1 }, { "id": "noValue", "value": "-" },
+              { "color": "transparent", "value": null }, { "color": "blue", "value": 0 }, { "color": "green", "value": 50 }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 150 } ] } } ] },
+          { "matcher": { "id": "byName", "options": "CPU % Limit" }, "properties": [
+            { "id": "unit", "value": "percent" }, { "id": "noValue", "value": "-" },
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "transparent", "value": null }, { "color": "blue", "value": 0 }, { "color": "green", "value": 25 }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 } ] } } ] },
+          { "matcher": { "id": "byName", "options": "CPU % Req" }, "properties": [
+            { "id": "unit", "value": "percent" }, { "id": "noValue", "value": "-" },
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "transparent", "value": null }, { "color": "blue", "value": 0 }, { "color": "green", "value": 50 }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 150 } ] } } ] },
+          { "matcher": { "id": "byName", "options": "Throttle %" }, "properties": [
+            { "id": "unit", "value": "percent" }, { "id": "noValue", "value": "-" },
             { "id": "custom.cellOptions", "value": { "type": "color-background" } },
             { "id": "thresholds", "value": { "mode": "absolute", "steps": [
               { "color": "transparent", "value": null }, { "color": "green", "value": 0 }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 25 } ] } } ] },
-          { "matcher": { "id": "byName", "options": "Mem Used (pod)" }, "properties": [
-            { "id": "unit", "value": "bytes" }, { "id": "decimals", "value": 0 }, { "id": "noValue", "value": "-" } ] }
+          { "matcher": { "id": "byName", "options": "Restarts" }, "properties": [
+            { "id": "decimals", "value": 0 }, { "id": "noValue", "value": "-" },
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "transparent", "value": null }, { "color": "green", "value": 0 }, { "color": "yellow", "value": 3 }, { "color": "red", "value": 10 } ] } } ] }
         ]
       }
     },
+
+    { "type": "row", "title": "Nodepool Capacity & Headroom", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }, "collapsed": false, "panels": [] },
 
     {
-      "type": "table",
-      "title": "Sizing Actions - worst replica vs its limits",
-      "description": "BLUE (<25%) = over-provisioned, limits can likely be reduced. RED (>90%) = at risk, raise the limit. Sorted by memory pressure. This is the reclaim/act worklist.",
+      "type": "stat",
+      "title": "Nodes in Pool",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 13 },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 15 },
       "targets": [
-        { "refId": "A", "instant": true, "format": "table",
-          "expr": "100 * max by (app) (label_replace(kubernetes_io:container_memory_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
-        { "refId": "B", "instant": true, "format": "table",
-          "expr": "100 * max by (app) (label_replace(kubernetes_io:container_cpu_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
-        { "refId": "C", "instant": true, "format": "table",
-          "expr": "100 * max by (app) (label_replace(kubernetes_io:container_memory_request_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
-        { "refId": "D", "instant": true, "format": "table",
-          "expr": "100 * max by (app) (label_replace(kubernetes_io:container_cpu_request_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" }
+        { "expr": "count(count by (node_name) (kubernetes_io:node_memory_allocatable_utilization{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\", memory_type=\"non-evictable\"}))" }
       ],
-      "transformations": [
-        { "id": "merge", "options": {} },
-        { "id": "organize", "options": {
-            "indexByName": { "app": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #D": 4 },
-            "renameByName": {
-              "app": "Service",
-              "Value #A": "Mem % of Limit",
-              "Value #B": "CPU % of Limit",
-              "Value #C": "Mem % of Request",
-              "Value #D": "CPU % of Request"
-            },
-            "excludeByName": { "Time": true }
-        } },
-        { "id": "sortBy", "options": { "sort": [{ "field": "Mem % of Limit", "desc": true }] } }
-      ],
-      "fieldConfig": {
-        "defaults": { "unit": "percent", "decimals": 1, "noValue": "-",
-          "custom": { "cellOptions": { "type": "color-background" } },
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "transparent", "value": null },
-            { "color": "blue", "value": 0 },
-            { "color": "green", "value": 25 },
-            { "color": "yellow", "value": 75 },
-            { "color": "red", "value": 90 } ] } },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "Service" }, "properties": [
-            { "id": "unit", "value": "string" },
-            { "id": "custom.cellOptions", "value": { "type": "auto" } } ] }
-        ]
-      }
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "noValue": "-" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
     },
-
+    {
+      "type": "stat",
+      "title": "Pool Memory Used %",
+      "description": "Allocatable memory in use across the pool (non-evictable). Headroom = 100 minus this.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 5, "x": 4, "y": 15 },
+      "targets": [
+        { "expr": "100 * avg(kubernetes_io:node_memory_allocatable_utilization{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\", memory_type=\"non-evictable\"})" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "decimals": 1, "noValue": "-",
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "blue", "value": null }, { "color": "green", "value": 40 }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "type": "stat",
+      "title": "Pool CPU Used %",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 5, "x": 9, "y": 15 },
+      "targets": [
+        { "expr": "100 * avg(kubernetes_io:node_cpu_allocatable_utilization{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"})" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "decimals": 1, "noValue": "-",
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "blue", "value": null }, { "color": "green", "value": 40 }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "type": "stat",
+      "title": "Pool Memory Capacity",
+      "description": "Total allocatable memory across all nodes in the pool.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 5, "x": 14, "y": 15 },
+      "targets": [
+        { "expr": "sum(kubernetes_io:node_memory_allocatable_bytes{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\", memory_type=\"non-evictable\"})" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1, "noValue": "-" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
+    {
+      "type": "stat",
+      "title": "Pool CPU Capacity",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 5, "x": 19, "y": 15 },
+      "targets": [
+        { "expr": "sum(kubernetes_io:node_cpu_allocatable_cores{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"})" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 2, "noValue": "-" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
     {
       "type": "timeseries",
-      "title": "Memory % of Limit by Service (OOMKill risk trend)",
-      "description": "Worst replica per service. Climbing toward 100% = pod will be OOMKilled.",
+      "title": "Nodepool Utilization % per Node",
+      "description": "Memory and CPU allocatable utilization for each node in the pool. Flat and low = over-provisioned pool; approaching 100 = add nodes.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
       "targets": [
-        { "expr": "100 * max by (app) (label_replace(kubernetes_io:container_memory_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))", "legendFormat": "{{app}}" }
+        { "expr": "100 * kubernetes_io:node_memory_allocatable_utilization{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\", memory_type=\"non-evictable\"}", "legendFormat": "mem {{node_name}}" },
+        { "expr": "100 * kubernetes_io:node_cpu_allocatable_utilization{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"}", "legendFormat": "cpu {{node_name}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 5 } }, "overrides": [] }
     },
     {
       "type": "timeseries",
-      "title": "CPU % of Limit & Throttling by Service",
-      "description": "High utilization + high throttling = undersized. Low utilization + high throttling = bursty workload against a tight cap.",
+      "title": "Namespace Footprint on the Pool",
+      "description": "What this namespace actually consumes. Compare against Pool Capacity above for headroom.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
       "targets": [
-        { "expr": "100 * max by (app) (label_replace(kubernetes_io:container_cpu_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))", "legendFormat": "util {{app}}" },
-        { "expr": "100 * max by (app) (label_replace(rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")) / max by (app) (label_replace(rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))", "legendFormat": "throttle {{app}}" }
+        { "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", container!=\"\", container!=\"POD\"}[5m]))", "legendFormat": "namespace CPU (cores)" },
+        { "expr": "sum(container_memory_working_set_bytes{namespace=\"$namespace\", container!=\"\", container!=\"POD\"}) / 1024 / 1024 / 1024", "legendFormat": "namespace memory (GiB)" }
       ],
-      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "custom": { "fillOpacity": 5 } }, "overrides": [] }
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "fillOpacity": 5 } }, "overrides": [] }
     },
+
+    { "type": "row", "title": "Resource Trends", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 }, "collapsed": false, "panels": [] },
 
     {
       "type": "timeseries",
-      "title": "Request Rate by Service",
+      "title": "CPU % of Limit - Top 8 Services",
+      "description": "Flat plateaus at 100% = service pinned at its CPU ceiling. Separate panel from throttling so both are readable.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 29 },
       "targets": [
-        { "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[5m]))", "legendFormat": "{{app}}" }
+        { "expr": "topk(8, 100 * max by (app) (label_replace(kubernetes_io:container_cpu_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))", "legendFormat": "{{app}}" }
       ],
-      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] }
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 5 } }, "overrides": [] }
     },
     {
       "type": "timeseries",
-      "title": "5xx Rate by Service (empty = healthy)",
+      "title": "CPU Throttling % - Top 8 Services",
+      "description": "Time spent frozen by the CFS scheduler. Sustained > 25% = raise the CPU limit.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 29 },
       "targets": [
-        { "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", status=~\"5..\"}[5m])) > 0", "legendFormat": "{{app}}" }
+        { "expr": "topk(8, 100 * max by (app) (label_replace(rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")) / max by (app) (label_replace(rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))", "legendFormat": "{{app}}" }
       ],
-      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 15 } }, "overrides": [] }
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 10 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory % of Limit - Top 8 (OOMKill risk)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 29 },
+      "targets": [
+        { "expr": "topk(8, 100 * max by (app) (label_replace(kubernetes_io:container_memory_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))", "legendFormat": "{{app}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Container Restarts - Top 8 (crash loop detector)",
+      "description": "Cumulative restart count per service (worst pod). A steadily climbing line = crash loop. Check Last State in kubectl describe pod for OOMKilled vs Error.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
+      "targets": [
+        { "expr": "topk(8, max by (app) (label_replace(kubernetes_io:container_restart_count{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))", "legendFormat": "{{app}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request Rate & 5xx by Service",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 37 },
+      "targets": [
+        { "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[5m]))", "legendFormat": "req/s {{app}}" },
+        { "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", status=~\"5..\"}[5m])) > 0", "legendFormat": "5xx/s {{app}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 5 } }, "overrides": [] }
     },
     {
       "type": "timeseries",
       "title": "Heap % by Service",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 39 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 45 },
       "targets": [
         { "expr": "100 * sum by (app) (jvm_memory_used_bytes{namespace=\"$namespace\", area=\"heap\"}) / sum by (app) (jvm_memory_max_bytes{namespace=\"$namespace\", area=\"heap\"})", "legendFormat": "{{app}}" }
       ],
       "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 5 } }, "overrides": [] }
-    },
-    {
-      "type": "timeseries",
-      "title": "Namespace Totals - CPU & Memory (dedicated nodepool footprint)",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 39 },
-      "targets": [
-        { "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", container!=\"\", container!=\"POD\"}[5m]))", "legendFormat": "total CPU (cores)" },
-        { "expr": "sum(container_memory_working_set_bytes{namespace=\"$namespace\", container!=\"\", container!=\"POD\"}) / 1024 / 1024 / 1024", "legendFormat": "total memory (GiB)" }
-      ],
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "fillOpacity": 5 } }, "overrides": [] }
     }
   ]
 }
