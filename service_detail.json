@@ -1,0 +1,302 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "title": "Service Detail - Spring Boot (by app)",
+  "uid": "service-detail-by-app",
+  "tags": ["prod-support", "jvm", "spring-boot", "gmp"],
+  "time": { "from": "now-3h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      { "name": "datasource", "type": "datasource", "query": "prometheus", "label": "Datasource", "current": {} },
+      {
+        "name": "namespace", "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(jvm_memory_used_bytes, namespace)",
+        "label": "Namespace", "refresh": 2, "sort": 1, "current": {}
+      },
+      {
+        "name": "app", "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(jvm_memory_used_bytes{namespace=\"$namespace\"}, app)",
+        "label": "Service", "refresh": 2, "sort": 1, "current": {}
+      }
+    ]
+  },
+  "panels": [
+
+    { "type": "row", "title": "Traffic & Errors", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false, "panels": [] },
+
+    {
+      "type": "stat",
+      "title": "Total Requests (selected range)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "targets": [
+        { "expr": "sum(increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[$__range]))", "instant": true }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
+    {
+      "type": "stat",
+      "title": "Success Rate %",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "targets": [
+        { "expr": "100 * (1 - (sum(increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", status=~\"5..\", uri!~\"/actuator.*\"}[$__range])) or vector(0)) / sum(increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[$__range])))", "instant": true }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 2, "min": 0, "max": 100,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "red", "value": null }, { "color": "yellow", "value": 99 }, { "color": "green", "value": 99.9 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "type": "stat",
+      "title": "5xx Count (range)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "targets": [
+        { "expr": "sum(increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", status=~\"5..\", uri!~\"/actuator.*\"}[$__range])) or vector(0)", "instant": true }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "type": "stat",
+      "title": "Avg Latency (range)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "targets": [
+        { "expr": "1000 * sum(increase(http_server_requests_seconds_sum{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[$__range])) / sum(increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[$__range]))", "instant": true }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ms", "decimals": 1,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 500 }, { "color": "red", "value": 1000 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request Rate by Status Class",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "sum by (code_class) (label_replace(rate(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[5m]), \"code_class\", \"$1xx\", \"status\", \"(\\\\d).*\"))", "legendFormat": "{{code_class}}" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "fillOpacity": 15, "stacking": { "mode": "normal" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "5xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] },
+          { "matcher": { "id": "byName", "options": "2xx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency - Avg & Slowest Request",
+      "description": "Avg = exact mean (5m). Slowest = max single request. Avg flat + max spiking = outliers; both rising = systemic (check GC/CPU).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        { "expr": "1000 * sum(rate(http_server_requests_seconds_sum{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[5m])) / sum(rate(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[5m]))", "legendFormat": "avg" },
+        { "expr": "1000 * max(http_server_requests_seconds_max{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"})", "legendFormat": "slowest" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "fillOpacity": 5 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "slowest" }, "properties": [
+            { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } },
+            { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [6, 6] } } ] }
+        ]
+      }
+    },
+
+    { "type": "row", "title": "Per-Endpoint", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }, "collapsed": false, "panels": [] },
+
+    {
+      "type": "table",
+      "title": "Endpoint Summary (selected range)",
+      "description": "Per-URI totals: calls, avg latency, 5xx, slowest. First stop for 'which API is the problem'.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 15 },
+      "targets": [
+        { "refId": "A", "instant": true, "format": "table",
+          "expr": "sum by (uri, method) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range]))" },
+        { "refId": "B", "instant": true, "format": "table",
+          "expr": "1000 * sum by (uri, method) (increase(http_server_requests_seconds_sum{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range])) / sum by (uri, method) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range]))" },
+        { "refId": "C", "instant": true, "format": "table",
+          "expr": "sum by (uri, method) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", status=~\"5..\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range]))" },
+        { "refId": "D", "instant": true, "format": "table",
+          "expr": "1000 * max by (uri, method) (http_server_requests_seconds_max{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"})" }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": {
+            "renameByName": { "Value #A": "Total Calls", "Value #B": "Avg Latency (ms)", "Value #C": "5xx", "Value #D": "Slowest (ms)", "uri": "Endpoint", "method": "Method" },
+            "excludeByName": { "Time": true }
+        } },
+        { "id": "sortBy", "options": { "sort": [{ "field": "Total Calls", "desc": true }] } }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Avg Latency (ms)" }, "properties": [
+            { "id": "unit", "value": "ms" }, { "id": "decimals", "value": 1 },
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "green", "value": null }, { "color": "yellow", "value": 500 }, { "color": "red", "value": 1000 } ] } } ] },
+          { "matcher": { "id": "byName", "options": "5xx" }, "properties": [
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } ] },
+          { "matcher": { "id": "byName", "options": "Slowest (ms)" }, "properties": [
+            { "id": "unit", "value": "ms" } ] }
+        ]
+      }
+    },
+
+    { "type": "row", "title": "JVM", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 }, "collapsed": false, "panels": [] },
+
+    {
+      "type": "stat",
+      "title": "Heap %",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 26 },
+      "targets": [
+        { "expr": "100 * sum(jvm_memory_used_bytes{namespace=\"$namespace\", app=\"$app\", area=\"heap\"}) / sum(jvm_memory_max_bytes{namespace=\"$namespace\", app=\"$app\", area=\"heap\"})" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 85 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "type": "stat",
+      "title": "Process CPU %",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 26 },
+      "targets": [
+        { "expr": "100 * max(process_cpu_usage{namespace=\"$namespace\", app=\"$app\"})" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 60 }, { "color": "red", "value": 80 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "type": "stat",
+      "title": "GC Time %",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 26 },
+      "targets": [
+        { "expr": "100 * sum(rate(jvm_gc_pause_seconds_sum{namespace=\"$namespace\", app=\"$app\"}[5m])) / count(jvm_threads_live_threads{namespace=\"$namespace\", app=\"$app\"})" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0,
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "yellow", "value": 2 }, { "color": "red", "value": 5 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+    },
+    {
+      "type": "stat",
+      "title": "Live Threads (all replicas)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 26 },
+      "targets": [
+        { "expr": "sum(jvm_threads_live_threads{namespace=\"$namespace\", app=\"$app\"})" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+    },
+    {
+      "type": "timeseries",
+      "title": "Heap Used vs Max (per pod)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
+      "targets": [
+        { "expr": "sum by (pod) (jvm_memory_used_bytes{namespace=\"$namespace\", app=\"$app\", area=\"heap\"})", "legendFormat": "used {{pod}}" },
+        { "expr": "sum by (pod) (jvm_memory_max_bytes{namespace=\"$namespace\", app=\"$app\", area=\"heap\"})", "legendFormat": "max {{pod}}" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "max .*" }, "properties": [
+            { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } },
+            { "id": "custom.fillOpacity", "value": 0 } ] }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Heap Pools (leak detector, per pod)",
+      "description": "Old gen / tenured climbing without post-GC drops = memory leak.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
+      "targets": [
+        { "expr": "jvm_memory_used_bytes{namespace=\"$namespace\", app=\"$app\", area=\"heap\"}", "legendFormat": "{{pod}} {{id}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "GC Pause Rate & Max Pause",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 39 },
+      "targets": [
+        { "expr": "sum by (pod, action) (rate(jvm_gc_pause_seconds_count{namespace=\"$namespace\", app=\"$app\"}[5m]))", "legendFormat": "{{pod}} {{action}}" },
+        { "expr": "max by (pod) (jvm_gc_pause_seconds_max{namespace=\"$namespace\", app=\"$app\"})", "legendFormat": "{{pod}} max pause (s)" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Threads & Loaded Classes (per pod)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 39 },
+      "targets": [
+        { "expr": "max by (pod) (jvm_threads_live_threads{namespace=\"$namespace\", app=\"$app\"})", "legendFormat": "threads {{pod}}" },
+        { "expr": "max by (pod) (jvm_classes_loaded_classes{namespace=\"$namespace\", app=\"$app\"})", "legendFormat": "classes {{pod}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    },
+
+    { "type": "row", "title": "Container Sizing (cAdvisor - pod-name matched)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 47 }, "collapsed": false, "panels": [] },
+
+    {
+      "type": "timeseries",
+      "title": "Container CPU (app container, per pod)",
+      "description": "Actual cores consumed by the app container. Compare against the pod's CPU limit for sizing.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 48 },
+      "targets": [
+        { "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", pod=~\"$app-.*\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]))", "legendFormat": "{{pod}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 3, "custom": { "fillOpacity": 10 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU Throttling % (per pod)",
+      "description": "Sustained > 25% = the CPU limit is silently adding latency; raise it.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 48 },
+      "targets": [
+        { "expr": "100 * sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", pod=~\"$app-.*\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m])) / sum by (pod) (rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", pod=~\"$app-.*\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]))", "legendFormat": "{{pod}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "custom": { "fillOpacity": 10 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Container Memory Working Set (app container, per pod)",
+      "description": "What the OOM killer judges: heap + off-heap + native. Compare against the pod's memory limit. Approaching the limit while Heap % looks fine = off-heap/native growth.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 48 },
+      "targets": [
+        { "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"$namespace\", pod=~\"$app-.*\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"})", "legendFormat": "{{pod}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] }
+    }
+  ]
+}
