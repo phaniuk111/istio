@@ -1,0 +1,3 @@
+# Heap usage % per deployment (all replicas combined)
+100 * sum by (app) (jvm_memory_used_bytes{namespace="$namespace", area="heap"})
+    / sum by (app) (jvm_memory_max_bytes{namespace="$namespace", area="heap"})
