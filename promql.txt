@@ -1,0 +1,10 @@
+# Heap usage % per deployment (all replicas combined)
+100 * sum by (app) (jvm_memory_used_bytes{namespace="$namespace", area="heap"})
+    / sum by (app) (jvm_memory_max_bytes{namespace="$namespace", area="heap"})
+
+
+kubernetes_io:container_memory_limit_utilization{monitored_resource="k8s_container", namespace_name="<NAMESPACE>", memory_type="non-evictable", container_name!="istio-proxy"}
+
+kubernetes_io:container_cpu_limit_utilization{monitored_resource="k8s_container", namespace_name="<NAMESPACE>", container_name!="istio-proxy"}
+
+kubernetes_io:node_memory_allocatable_utilization{monitored_resource="k8s_node"}
