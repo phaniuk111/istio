@@ -1,300 +1,1140 @@
 {
-  "annotations": { "list": [] },
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "graphTooltip": 1,
   "schemaVersion": 39,
   "title": "Fleet Overview - All Services (by app)",
   "uid": "fleet-overview-by-app",
-  "tags": ["prod-support", "fleet", "gmp", "sizing"],
-  "time": { "from": "now-3h", "to": "now" },
+  "tags": [
+    "prod-support",
+    "fleet",
+    "gmp",
+    "sizing"
+  ],
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
   "refresh": "1m",
+  "links": [
+    {
+      "title": "Service Detail (drill down)",
+      "type": "link",
+      "url": "/d/service-detail-by-app/service-detail-spring-boot-by-app?var-namespace=${namespace}",
+      "targetBlank": false,
+      "icon": "dashboard"
+    }
+  ],
   "templating": {
     "list": [
-      { "name": "datasource", "type": "datasource", "query": "prometheus", "label": "Datasource", "current": {} },
       {
-        "name": "namespace", "type": "query",
-        "datasource": { "type": "prometheus", "uid": "${datasource}" },
-        "query": "label_values(jvm_memory_used_bytes, namespace)",
-        "label": "Namespace", "refresh": 2, "sort": 1, "current": {}
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Datasource",
+        "current": {}
       },
       {
-        "name": "nodepool_filter", "type": "textbox",
+        "name": "namespace",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": "label_values(jvm_memory_used_bytes, namespace)",
+        "label": "Namespace",
+        "refresh": 2,
+        "sort": 1,
+        "current": {}
+      },
+      {
+        "name": "nodepool_filter",
+        "type": "textbox",
         "label": "Nodepool match (tenant id)",
-        "description": "Stable portion of the node name for your dedicated nodepool. Environment-independent - cluster name and node hash are wildcarded.",
+        "description": "Stable portion of the node name for your dedicated nodepool. Cluster name and node hash are wildcarded, so this survives environment changes (dev/uat/prod).",
         "query": "173952-1-eod",
-        "current": { "text": "173952-1-eod", "value": "173952-1-eod" }
+        "current": {
+          "text": "173952-1-eod",
+          "value": "173952-1-eod"
+        }
       }
     ]
   },
   "panels": [
-
-    { "type": "row", "title": "Service Health & Sizing", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "collapsed": false, "panels": [] },
-
+    {
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**How to read this table** &nbsp; \ud83d\udfe9 **Green** = healthy &nbsp;|&nbsp; \ud83d\udfe8 **Amber** = watch &nbsp;|&nbsp; \ud83d\udfe5 **Red** = act now (OOMKill risk, throttling, errors, crash loops) &nbsp;|&nbsp; **`-`** = service not yet emitting app metrics (annotations pending). &nbsp; **First actions:** Restarts red \u2192 `kubectl describe pod` (check Last State: OOMKilled vs Error) \u00b7 Throttle red \u2192 raise CPU limit \u00b7 Mem % of Limit red \u2192 raise memory limit \u00b7 very low green %s across a row \u2192 over-provisioned, review limits/requests for reclaim. Note: there is no memory throttling in Linux - memory over limit = OOMKill, so watch Mem % of Limit + Restarts."
+      }
+    },
+    {
+      "type": "row",
+      "title": "Service Health & Sizing",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      },
+      "collapsed": false,
+      "panels": []
+    },
     {
       "type": "table",
-      "title": "All Services - health, sizing and stability",
-      "description": "'-' = no data (app metrics not enabled for that service yet). LIMIT columns drive throttling/OOMKills; REQUEST columns drive scheduling and reserve nodepool capacity. CPU columns are a 5m MAX so burst plateaus are visible (an instant read hides them). All resource columns show the WORST replica. Memory = non-evictable only. istio-proxy excluded.",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 13, "w": 24, "x": 0, "y": 1 },
+      "title": "All Services - health, sizing, stability (sorted by restarts)",
+      "description": "Traffic/JVM from app metrics (app label). Resource columns from GKE metrics: LIMIT ratios drive throttling & OOMKills, REQUEST ratios drive scheduling & reserved nodepool capacity. CPU ratios are 5-minute MAX of the worst replica so burst plateaus are visible. Restarts = restarts within the selected time range (not lifetime). Memory = non-evictable. istio-proxy excluded.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 13,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
       "targets": [
-        { "refId": "A", "instant": true, "format": "table",
-          "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[5m]))" },
-        { "refId": "B", "instant": true, "format": "table",
-          "expr": "sum by (app) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", status=~\"5..\", uri!~\"/actuator.*\"}[$__range]))" },
-        { "refId": "C", "instant": true, "format": "table",
-          "expr": "1000 * sum by (app) (increase(http_server_requests_seconds_sum{namespace=\"$namespace\", uri!~\"/actuator.*\"}[$__range])) / sum by (app) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[$__range]))" },
-        { "refId": "D", "instant": true, "format": "table",
-          "expr": "100 * sum by (app) (jvm_memory_used_bytes{namespace=\"$namespace\", area=\"heap\"}) / sum by (app) (jvm_memory_max_bytes{namespace=\"$namespace\", area=\"heap\"})" },
-        { "refId": "E", "instant": true, "format": "table",
-          "expr": "100 * sum by (app) (rate(jvm_gc_pause_seconds_sum{namespace=\"$namespace\"}[5m])) / count by (app) (jvm_threads_live_threads{namespace=\"$namespace\"})" },
-        { "refId": "F", "instant": true, "format": "table",
-          "expr": "100 * max by (app) (label_replace(kubernetes_io:container_memory_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
-        { "refId": "G", "instant": true, "format": "table",
-          "expr": "100 * max by (app) (label_replace(kubernetes_io:container_memory_request_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
-        { "refId": "H", "instant": true, "format": "table",
-          "expr": "100 * max by (app) (label_replace(max_over_time(kubernetes_io:container_cpu_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}[5m]), \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
-        { "refId": "I", "instant": true, "format": "table",
-          "expr": "100 * max by (app) (label_replace(max_over_time(kubernetes_io:container_cpu_request_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}[5m]), \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
-        { "refId": "J", "instant": true, "format": "table",
-          "expr": "100 * max by (app) (label_replace(rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")) / max by (app) (label_replace(rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
-        { "refId": "K", "instant": true, "format": "table",
-          "expr": "max by (app) (label_replace(kubernetes_io:container_restart_count{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" }
+        {
+          "refId": "A",
+          "instant": true,
+          "format": "table",
+          "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[5m]))"
+        },
+        {
+          "refId": "B",
+          "instant": true,
+          "format": "table",
+          "expr": "sum by (app) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", status=~\"5..\", uri!~\"/actuator.*\"}[$__range]))"
+        },
+        {
+          "refId": "C",
+          "instant": true,
+          "format": "table",
+          "expr": "1000 * sum by (app) (increase(http_server_requests_seconds_sum{namespace=\"$namespace\", uri!~\"/actuator.*\"}[$__range])) / sum by (app) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[$__range]))"
+        },
+        {
+          "refId": "D",
+          "instant": true,
+          "format": "table",
+          "expr": "100 * sum by (app) (jvm_memory_used_bytes{namespace=\"$namespace\", area=\"heap\"}) / sum by (app) (jvm_memory_max_bytes{namespace=\"$namespace\", area=\"heap\"})"
+        },
+        {
+          "refId": "E",
+          "instant": true,
+          "format": "table",
+          "expr": "100 * sum by (app) (rate(jvm_gc_pause_seconds_sum{namespace=\"$namespace\"}[5m])) / count by (app) (jvm_threads_live_threads{namespace=\"$namespace\"})"
+        },
+        {
+          "refId": "F",
+          "instant": true,
+          "format": "table",
+          "expr": "100 * max by (app) (label_replace(kubernetes_io:container_memory_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))"
+        },
+        {
+          "refId": "G",
+          "instant": true,
+          "format": "table",
+          "expr": "100 * max by (app) (label_replace(kubernetes_io:container_memory_request_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))"
+        },
+        {
+          "refId": "H",
+          "instant": true,
+          "format": "table",
+          "expr": "100 * max by (app) (label_replace(max_over_time(kubernetes_io:container_cpu_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}[5m]), \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))"
+        },
+        {
+          "refId": "I",
+          "instant": true,
+          "format": "table",
+          "expr": "100 * max by (app) (label_replace(rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")) / max by (app) (label_replace(rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))"
+        },
+        {
+          "refId": "J",
+          "instant": true,
+          "format": "table",
+          "expr": "max by (app) (label_replace(increase(kubernetes_io:container_restart_count{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}[$__range]), \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))"
+        }
       ],
       "transformations": [
-        { "id": "merge", "options": {} },
-        { "id": "organize", "options": {
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
             "indexByName": {
-              "app": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #D": 4, "Value #E": 5,
-              "Value #F": 6, "Value #G": 7, "Value #H": 8, "Value #I": 9, "Value #J": 10, "Value #K": 11
+              "app": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4,
+              "Value #E": 5,
+              "Value #F": 6,
+              "Value #G": 7,
+              "Value #H": 8,
+              "Value #I": 9,
+              "Value #J": 10
             },
             "renameByName": {
               "app": "Service",
               "Value #A": "Req/s",
-              "Value #B": "5xx",
-              "Value #C": "Latency (ms)",
+              "Value #B": "5xx (range)",
+              "Value #C": "Avg Latency",
               "Value #D": "Heap %",
               "Value #E": "GC %",
-              "Value #F": "Mem % Limit",
-              "Value #G": "Mem % Req",
-              "Value #H": "CPU % Limit",
-              "Value #I": "CPU % Req",
-              "Value #J": "Throttle %",
-              "Value #K": "Restarts"
+              "Value #F": "Mem % of Limit",
+              "Value #G": "Mem % of Request",
+              "Value #H": "CPU % of Limit (5m max)",
+              "Value #I": "CPU Throttle %",
+              "Value #J": "Restarts (range)"
             },
-            "excludeByName": { "Time": true }
-        } },
-        { "id": "sortBy", "options": { "sort": [{ "field": "Restarts", "desc": true }] } }
+            "excludeByName": {
+              "Time": true
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Restarts (range)",
+                "desc": true
+              }
+            ]
+          }
+        }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "short", "decimals": 1, "noValue": "-" },
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "noValue": "-"
+        },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "5xx" }, "properties": [
-            { "id": "decimals", "value": 0 }, { "id": "noValue", "value": "-" },
-            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
-            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
-              { "color": "transparent", "value": null }, { "color": "green", "value": 0 }, { "color": "red", "value": 1 } ] } } ] },
-          { "matcher": { "id": "byName", "options": "Latency (ms)" }, "properties": [
-            { "id": "unit", "value": "ms" }, { "id": "noValue", "value": "-" },
-            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
-            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
-              { "color": "transparent", "value": null }, { "color": "green", "value": 0 }, { "color": "yellow", "value": 500 }, { "color": "red", "value": 1000 } ] } } ] },
-          { "matcher": { "id": "byName", "options": "Heap %" }, "properties": [
-            { "id": "unit", "value": "percent" }, { "id": "noValue", "value": "-" },
-            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
-            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
-              { "color": "transparent", "value": null }, { "color": "green", "value": 0 }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 85 } ] } } ] },
-          { "matcher": { "id": "byName", "options": "GC %" }, "properties": [
-            { "id": "unit", "value": "percent" }, { "id": "decimals", "value": 2 }, { "id": "noValue", "value": "-" },
-            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
-            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
-              { "color": "transparent", "value": null }, { "color": "green", "value": 0 }, { "color": "yellow", "value": 2 }, { "color": "red", "value": 5 } ] } } ] },
-          { "matcher": { "id": "byName", "options": "Mem % Limit" }, "properties": [
-            { "id": "unit", "value": "percent" }, { "id": "noValue", "value": "-" },
-            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
-            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
-              { "color": "transparent", "value": null }, { "color": "blue", "value": 0 }, { "color": "green", "value": 25 }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 } ] } } ] },
-          { "matcher": { "id": "byName", "options": "Mem % Req" }, "properties": [
-            { "id": "unit", "value": "percent" }, { "id": "noValue", "value": "-" },
-            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
-            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
-              { "color": "transparent", "value": null }, { "color": "blue", "value": 0 }, { "color": "green", "value": 50 }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 150 } ] } } ] },
-          { "matcher": { "id": "byName", "options": "CPU % Limit" }, "properties": [
-            { "id": "unit", "value": "percent" }, { "id": "noValue", "value": "-" },
-            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
-            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
-              { "color": "transparent", "value": null }, { "color": "blue", "value": 0 }, { "color": "green", "value": 25 }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 } ] } } ] },
-          { "matcher": { "id": "byName", "options": "CPU % Req" }, "properties": [
-            { "id": "unit", "value": "percent" }, { "id": "noValue", "value": "-" },
-            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
-            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
-              { "color": "transparent", "value": null }, { "color": "blue", "value": 0 }, { "color": "green", "value": 50 }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 150 } ] } } ] },
-          { "matcher": { "id": "byName", "options": "Throttle %" }, "properties": [
-            { "id": "unit", "value": "percent" }, { "id": "noValue", "value": "-" },
-            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
-            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
-              { "color": "transparent", "value": null }, { "color": "green", "value": 0 }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 25 } ] } } ] },
-          { "matcher": { "id": "byName", "options": "Restarts" }, "properties": [
-            { "id": "decimals", "value": 0 }, { "id": "noValue", "value": "-" },
-            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
-            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
-              { "color": "transparent", "value": null }, { "color": "green", "value": 0 }, { "color": "yellow", "value": 3 }, { "color": "red", "value": 10 } ] } } ] }
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "5xx (range)"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "noValue",
+                "value": "-"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg Latency"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "noValue",
+                "value": "-"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 500
+                    },
+                    {
+                      "color": "red",
+                      "value": 1000
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Heap %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "noValue",
+                "value": "-"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 75
+                    },
+                    {
+                      "color": "red",
+                      "value": 85
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "GC %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "noValue",
+                "value": "-"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 2
+                    },
+                    {
+                      "color": "red",
+                      "value": 5
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mem % of Limit"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "noValue",
+                "value": "-"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 75
+                    },
+                    {
+                      "color": "red",
+                      "value": 90
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mem % of Request"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "noValue",
+                "value": "-"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 100
+                    },
+                    {
+                      "color": "red",
+                      "value": 150
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU % of Limit (5m max)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "noValue",
+                "value": "-"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 75
+                    },
+                    {
+                      "color": "red",
+                      "value": 90
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU Throttle %"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "noValue",
+                "value": "-"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 5
+                    },
+                    {
+                      "color": "red",
+                      "value": 25
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Restarts (range)"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "noValue",
+                "value": "-"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    },
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 5
+                    }
+                  ]
+                }
+              }
+            ]
+          }
         ]
       }
     },
-
-    { "type": "row", "title": "Nodepool Capacity & Headroom", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }, "collapsed": false, "panels": [] },
-
+    {
+      "type": "row",
+      "title": "Nodepool Capacity & Headroom",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "collapsed": false,
+      "panels": []
+    },
     {
       "type": "stat",
       "title": "Nodes in Pool",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 15 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 18
+      },
       "targets": [
-        { "expr": "count(count by (node_name) (kubernetes_io:node_memory_allocatable_utilization{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\", memory_type=\"non-evictable\"}))" }
+        {
+          "expr": "count(count by (node_name) (last_over_time(kubernetes_io:node_memory_allocatable_utilization{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\", memory_type=\"non-evictable\"}[10m])))",
+          "instant": true
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "noValue": "-" }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "-"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value"
+      }
     },
     {
       "type": "stat",
       "title": "Pool Memory Used %",
-      "description": "Allocatable memory in use across the pool (non-evictable). Headroom = 100 minus this.",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 5, "w": 5, "x": 4, "y": 15 },
+      "description": "Average across pool nodes, non-evictable. Headroom = 100 minus this.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 4,
+        "y": 18
+      },
       "targets": [
-        { "expr": "100 * avg(kubernetes_io:node_memory_allocatable_utilization{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\", memory_type=\"non-evictable\"})" }
+        {
+          "expr": "100 * avg(kubernetes_io:node_memory_allocatable_utilization{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\", memory_type=\"non-evictable\"})",
+          "instant": true
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "decimals": 1, "noValue": "-",
-        "thresholds": { "mode": "absolute", "steps": [
-          { "color": "blue", "value": null }, { "color": "green", "value": 40 }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 } ] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 75
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background"
+      }
     },
     {
       "type": "stat",
       "title": "Pool CPU Used %",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 5, "w": 5, "x": 9, "y": 15 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 9,
+        "y": 18
+      },
       "targets": [
-        { "expr": "100 * avg(kubernetes_io:node_cpu_allocatable_utilization{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"})" }
+        {
+          "expr": "100 * avg(kubernetes_io:node_cpu_allocatable_utilization{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"})",
+          "instant": true
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "decimals": 1, "noValue": "-",
-        "thresholds": { "mode": "absolute", "steps": [
-          { "color": "blue", "value": null }, { "color": "green", "value": 40 }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 90 } ] } }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 75
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background"
+      }
     },
     {
       "type": "stat",
       "title": "Pool Memory Capacity",
-      "description": "Total allocatable memory across all nodes in the pool.",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 5, "w": 5, "x": 14, "y": 15 },
+      "description": "Total allocatable memory across pool nodes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 14,
+        "y": 18
+      },
       "targets": [
-        { "expr": "sum(kubernetes_io:node_memory_allocatable_bytes{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\", memory_type=\"non-evictable\"})" }
+        {
+          "expr": "sum(last_over_time(kubernetes_io:node_memory_allocatable_bytes{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"}[10m]))",
+          "instant": true
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1, "noValue": "-" }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "decimals": 1,
+          "noValue": "-"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value"
+      }
     },
     {
       "type": "stat",
-      "title": "Pool CPU Capacity",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 5, "w": 5, "x": 19, "y": 15 },
+      "title": "Pool CPU Capacity (cores)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 5,
+        "x": 19,
+        "y": 18
+      },
       "targets": [
-        { "expr": "sum(kubernetes_io:node_cpu_allocatable_cores{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"})" }
+        {
+          "expr": "sum(last_over_time(kubernetes_io:node_cpu_allocatable_cores{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"}[10m]))",
+          "instant": true
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 2, "noValue": "-" }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value" }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "noValue": "-"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value"
+      }
     },
     {
       "type": "timeseries",
       "title": "Nodepool Utilization % per Node",
-      "description": "Memory and CPU allocatable utilization for each node in the pool. Flat and low = over-provisioned pool; approaching 100 = add nodes.",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "description": "Approaching 100 = add nodes. Flat and low = pool can shrink.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 23
+      },
       "targets": [
-        { "expr": "100 * kubernetes_io:node_memory_allocatable_utilization{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\", memory_type=\"non-evictable\"}", "legendFormat": "mem {{node_name}}" },
-        { "expr": "100 * kubernetes_io:node_cpu_allocatable_utilization{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"}", "legendFormat": "cpu {{node_name}}" }
+        {
+          "expr": "100 * kubernetes_io:node_memory_allocatable_utilization{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\", memory_type=\"non-evictable\"}",
+          "legendFormat": "mem {{node_name}}"
+        },
+        {
+          "expr": "100 * kubernetes_io:node_cpu_allocatable_utilization{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"}",
+          "legendFormat": "cpu {{node_name}}"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 5 } }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "fillOpacity": 5
+          }
+        },
+        "overrides": []
+      }
     },
     {
       "type": "timeseries",
-      "title": "Namespace Footprint on the Pool",
-      "description": "What this namespace actually consumes. Compare against Pool Capacity above for headroom.",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "title": "Namespace Footprint - % of Pool Capacity",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 23
+      },
       "targets": [
-        { "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", container!=\"\", container!=\"POD\"}[5m]))", "legendFormat": "namespace CPU (cores)" },
-        { "expr": "sum(container_memory_working_set_bytes{namespace=\"$namespace\", container!=\"\", container!=\"POD\"}) / 1024 / 1024 / 1024", "legendFormat": "namespace memory (GiB)" }
+        {
+          "expr": "100 * sum(container_memory_working_set_bytes{namespace=\"$namespace\", container!=\"\", container!=\"POD\"}) / sum(last_over_time(kubernetes_io:node_memory_allocatable_bytes{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"}[10m]))",
+          "legendFormat": "memory % of pool"
+        },
+        {
+          "expr": "100 * sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", container!=\"\", container!=\"POD\"}[5m])) / sum(last_over_time(kubernetes_io:node_cpu_allocatable_cores{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"}[10m]))",
+          "legendFormat": "cpu % of pool"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "fillOpacity": 5 } }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "custom": {
+            "fillOpacity": 10,
+            "thresholdsStyle": {
+              "mode": "dashed+area"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 75
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "description": "Namespace usage as a share of the nodepool allocatable capacity. Dashed lines: amber 75%, red 90%. Below 40% = ample headroom; approaching the red line = add nodes or reclaim."
     },
-
-    { "type": "row", "title": "Resource Trends", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 }, "collapsed": false, "panels": [] },
-
+    {
+      "type": "row",
+      "title": "Resource Trends (top offenders)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "collapsed": false,
+      "panels": []
+    },
     {
       "type": "timeseries",
-      "title": "CPU % of Limit - Top 8 Services",
-      "description": "Flat plateaus at 100% = service pinned at its CPU ceiling. Separate panel from throttling so both are readable.",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 29 },
+      "title": "CPU % of Limit - Top 8",
+      "description": "Flat plateaus at 100 = service pinned at its CPU ceiling.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 32
+      },
       "targets": [
-        { "expr": "topk(8, 100 * max by (app) (label_replace(kubernetes_io:container_cpu_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))", "legendFormat": "{{app}}" }
+        {
+          "expr": "topk(8, 100 * max by (app) (label_replace(kubernetes_io:container_cpu_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))",
+          "legendFormat": "{{app}}"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 5 } }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "fillOpacity": 5
+          }
+        },
+        "overrides": []
+      }
     },
     {
       "type": "timeseries",
-      "title": "CPU Throttling % - Top 8 Services",
-      "description": "Time spent frozen by the CFS scheduler. Sustained > 25% = raise the CPU limit.",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 29 },
+      "title": "CPU Throttling % - Top 8",
+      "description": "Time frozen by the scheduler. Sustained > 25 = raise CPU limit.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 32
+      },
       "targets": [
-        { "expr": "topk(8, 100 * max by (app) (label_replace(rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")) / max by (app) (label_replace(rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))", "legendFormat": "{{app}}" }
+        {
+          "expr": "topk(8, 100 * max by (app) (label_replace(rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")) / max by (app) (label_replace(rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))",
+          "legendFormat": "{{app}}"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 10 } }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
     },
     {
       "type": "timeseries",
       "title": "Memory % of Limit - Top 8 (OOMKill risk)",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 29 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 32
+      },
       "targets": [
-        { "expr": "topk(8, 100 * max by (app) (label_replace(kubernetes_io:container_memory_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))", "legendFormat": "{{app}}" }
+        {
+          "expr": "topk(8, 100 * max by (app) (label_replace(kubernetes_io:container_memory_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))",
+          "legendFormat": "{{app}}"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 5 } }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "fillOpacity": 5
+          }
+        },
+        "overrides": []
+      }
     },
     {
       "type": "timeseries",
-      "title": "Container Restarts - Top 8 (crash loop detector)",
-      "description": "Cumulative restart count per service (worst pod). A steadily climbing line = crash loop. Check Last State in kubectl describe pod for OOMKilled vs Error.",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
+      "title": "Restarts per Hour - Top 8 (crash loop detector)",
+      "description": "Spikes mark restart moments. Any repeating pattern = crash loop: kubectl describe pod -> Last State (OOMKilled vs Error).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
       "targets": [
-        { "expr": "topk(8, max by (app) (label_replace(kubernetes_io:container_restart_count{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))", "legendFormat": "{{app}}" }
+        {
+          "expr": "topk(8, max by (app) (label_replace(increase(kubernetes_io:container_restart_count{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}[1h]), \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))",
+          "legendFormat": "{{app}}"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "custom": { "fillOpacity": 5 } }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
     },
     {
       "type": "timeseries",
       "title": "Request Rate & 5xx by Service",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 37 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
       "targets": [
-        { "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[5m]))", "legendFormat": "req/s {{app}}" },
-        { "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", status=~\"5..\"}[5m])) > 0", "legendFormat": "5xx/s {{app}}" }
+        {
+          "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[5m]))",
+          "legendFormat": "req/s {{app}}"
+        },
+        {
+          "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", status=~\"5..\"}[5m])) > 0",
+          "legendFormat": "5xx/s {{app}}"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 5 } }, "overrides": [] }
-    },
-    {
-      "type": "timeseries",
-      "title": "Heap % by Service",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 45 },
-      "targets": [
-        { "expr": "100 * sum by (app) (jvm_memory_used_bytes{namespace=\"$namespace\", area=\"heap\"}) / sum by (app) (jvm_memory_max_bytes{namespace=\"$namespace\", area=\"heap\"})", "legendFormat": "{{app}}" }
-      ],
-      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 5 } }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "fillOpacity": 5
+          }
+        },
+        "overrides": []
+      }
     }
   ]
 }
