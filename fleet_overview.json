@@ -1,0 +1,164 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "title": "Fleet Overview - All Services (by app)",
+  "uid": "fleet-overview-by-app",
+  "tags": ["prod-support", "fleet", "gmp"],
+  "time": { "from": "now-3h", "to": "now" },
+  "refresh": "1m",
+  "templating": {
+    "list": [
+      { "name": "datasource", "type": "datasource", "query": "prometheus", "label": "Datasource", "current": {} },
+      {
+        "name": "namespace", "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(jvm_memory_used_bytes, namespace)",
+        "label": "Namespace", "refresh": 2, "sort": 1, "current": {}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "table",
+      "title": "Service Health - one row per service",
+      "description": "Traffic/JVM columns use the `app` target label. CPU/memory/throttle columns come from cAdvisor (no app label there) and are mapped by stripping the replicaset suffix from pod names - values align because pod name prefix = deployment name = app. App containers only (istio-proxy excluded).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        { "refId": "A", "instant": true, "format": "table",
+          "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[5m]))" },
+        { "refId": "B", "instant": true, "format": "table",
+          "expr": "sum by (app) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", status=~\"5..\", uri!~\"/actuator.*\"}[$__range]))" },
+        { "refId": "C", "instant": true, "format": "table",
+          "expr": "1000 * sum by (app) (increase(http_server_requests_seconds_sum{namespace=\"$namespace\", uri!~\"/actuator.*\"}[$__range])) / sum by (app) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[$__range]))" },
+        { "refId": "D", "instant": true, "format": "table",
+          "expr": "100 * sum by (app) (jvm_memory_used_bytes{namespace=\"$namespace\", area=\"heap\"}) / sum by (app) (jvm_memory_max_bytes{namespace=\"$namespace\", area=\"heap\"})" },
+        { "refId": "E", "instant": true, "format": "table",
+          "expr": "100 * sum by (app) (rate(jvm_gc_pause_seconds_sum{namespace=\"$namespace\"}[5m])) / count by (app) (jvm_threads_live_threads{namespace=\"$namespace\"})" },
+        { "refId": "F", "instant": true, "format": "table",
+          "expr": "sum by (app) (label_replace(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
+        { "refId": "G", "instant": true, "format": "table",
+          "expr": "100 * sum by (app) (label_replace(rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")) / sum by (app) (label_replace(rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" },
+        { "refId": "H", "instant": true, "format": "table",
+          "expr": "sum by (app) (label_replace(container_memory_working_set_bytes{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}, \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))" }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": {
+            "renameByName": {
+              "app": "Service",
+              "Value #A": "Req/s",
+              "Value #B": "5xx (range)",
+              "Value #C": "Avg Latency (ms)",
+              "Value #D": "Heap %",
+              "Value #E": "GC Time %",
+              "Value #F": "CPU (cores)",
+              "Value #G": "CPU Throttle %",
+              "Value #H": "Memory (app)"
+            },
+            "excludeByName": { "Time": true }
+        } },
+        { "id": "sortBy", "options": { "sort": [{ "field": "Req/s", "desc": true }] } }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 2 },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "5xx (range)" }, "properties": [
+            { "id": "decimals", "value": 0 },
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } ] },
+          { "matcher": { "id": "byName", "options": "Avg Latency (ms)" }, "properties": [
+            { "id": "unit", "value": "ms" }, { "id": "decimals", "value": 1 },
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "green", "value": null }, { "color": "yellow", "value": 500 }, { "color": "red", "value": 1000 } ] } } ] },
+          { "matcher": { "id": "byName", "options": "Heap %" }, "properties": [
+            { "id": "unit", "value": "percent" }, { "id": "decimals", "value": 1 },
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 85 } ] } } ] },
+          { "matcher": { "id": "byName", "options": "GC Time %" }, "properties": [
+            { "id": "unit", "value": "percent" }, { "id": "decimals", "value": 2 },
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "green", "value": null }, { "color": "yellow", "value": 2 }, { "color": "red", "value": 5 } ] } } ] },
+          { "matcher": { "id": "byName", "options": "CPU Throttle %" }, "properties": [
+            { "id": "unit", "value": "percent" }, { "id": "decimals", "value": 1 },
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 25 } ] } } ] },
+          { "matcher": { "id": "byName", "options": "Memory (app)" }, "properties": [
+            { "id": "unit", "value": "bytes" }, { "id": "decimals", "value": 0 } ] },
+          { "matcher": { "id": "byName", "options": "CPU (cores)" }, "properties": [
+            { "id": "decimals", "value": 3 } ] }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request Rate by Service",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[5m]))", "legendFormat": "{{app}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 10, "stacking": { "mode": "normal" } } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "5xx Rate by Service (empty = healthy)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        { "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", status=~\"5..\"}[5m])) > 0", "legendFormat": "{{app}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "fillOpacity": 15 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Heap % by Service",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 20 },
+      "targets": [
+        { "expr": "100 * sum by (app) (jvm_memory_used_bytes{namespace=\"$namespace\", area=\"heap\"}) / sum by (app) (jvm_memory_max_bytes{namespace=\"$namespace\", area=\"heap\"})", "legendFormat": "{{app}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU Throttling % by Service",
+      "description": "Sustained > 25% = the CPU limit is adding latency; raise it.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 20 },
+      "targets": [
+        { "expr": "100 * sum by (app) (label_replace(rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")) / sum by (app) (label_replace(rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))", "legendFormat": "{{app}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "custom": { "fillOpacity": 10 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Container Memory by Service (app containers)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 20 },
+      "targets": [
+        { "expr": "sum by (app) (label_replace(container_memory_working_set_bytes{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}, \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))", "legendFormat": "{{app}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Namespace Totals - CPU & Memory (dedicated nodepool footprint)",
+      "description": "Total namespace resource footprint incl. sidecars. Trend against your nodepool capacity for headroom planning.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
+      "targets": [
+        { "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", container!=\"\", container!=\"POD\"}[5m]))", "legendFormat": "total CPU (cores)" },
+        { "expr": "sum(container_memory_working_set_bytes{namespace=\"$namespace\", container!=\"\", container!=\"POD\"}) / 1024 / 1024 / 1024", "legendFormat": "total memory (GiB)" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "custom": { "fillOpacity": 5 } }, "overrides": [] }
+    }
+  ]
+}
