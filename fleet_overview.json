@@ -92,7 +92,7 @@
     {
       "type": "table",
       "title": "All Services - health, sizing, stability (sorted by restarts)",
-      "description": "Traffic/JVM from app metrics (app label). Resource columns from GKE metrics: LIMIT ratios drive throttling & OOMKills, REQUEST ratios drive scheduling & reserved nodepool capacity. CPU ratios are 5-minute MAX of the worst replica so burst plateaus are visible. Restarts = restarts within the selected time range (not lifetime). Memory = non-evictable. istio-proxy excluded.",
+      "description": "Click a service name to open Service Detail for that service (namespace and time range carry over). Traffic/JVM from app metrics (app label). Resource columns from GKE metrics: LIMIT ratios drive throttling & OOMKills, REQUEST ratios drive scheduling & reserved nodepool capacity. CPU ratios are 5-minute MAX of the worst replica so burst plateaus are visible. Restarts = restarts within the selected time range (not lifetime). Memory = non-evictable. istio-proxy excluded.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -223,6 +223,24 @@
           "noValue": "-"
         },
         "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Service"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open Service Detail",
+                    "url": "/d/service-detail-by-app/service-detail?var-namespace=${namespace}&var-app=${__data.fields.Service}&${__url_time_range}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
           {
             "matcher": {
               "id": "byName",
@@ -1176,6 +1194,6 @@
       }
     }
   ],
-  "description": "v4 - 2026-08-11: traffic-light colors, nodepool row (capacity/headroom, 10m-lookback counts), footprint as % of pool with threshold lines, neutral capacity stats, restarts-in-range column, CPU 5m-max columns.",
-  "version": 4
+  "description": "v5 - 2026-08-11: service names in the table link through to Service Detail (carries namespace + time range). traffic-light colors, nodepool row (capacity/headroom, 10m-lookback counts), footprint as % of pool with threshold lines, neutral capacity stats, restarts-in-range column, CPU 5m-max columns.",
+  "version": 5
 }
