@@ -38,7 +38,22 @@
         "label": "Namespace",
         "refresh": 2,
         "sort": 1,
-        "current": {}
+        "current": {
+          "selected": true,
+          "text": [
+            "eod",
+            "eod1"
+          ],
+          "value": [
+            "eod",
+            "eod1"
+          ]
+        },
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "regex": "/^(eod|eod1|eod-platform)$/",
+        "description": "Tenant namespaces. eod-platform hosts the Istio gateway - it has no Spring Boot app metrics, so app/JVM columns show '-' for it while container and pool metrics still apply."
       },
       {
         "name": "app",
@@ -47,7 +62,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "query": "label_values(jvm_memory_used_bytes{namespace=\"$namespace\"}, app)",
+        "query": "label_values(jvm_memory_used_bytes{namespace=~\"$namespace\"}, app)",
         "label": "Service",
         "refresh": 2,
         "sort": 1,
@@ -83,7 +98,7 @@
       },
       "targets": [
         {
-          "expr": "sum(increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[$__range]))",
+          "expr": "sum(increase(http_server_requests_seconds_count{namespace=~\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[$__range]))",
           "instant": true
         }
       ],
@@ -118,7 +133,7 @@
       },
       "targets": [
         {
-          "expr": "100 * (1 - (sum(increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", status=~\"5..\", uri!~\"/actuator.*\"}[$__range])) or vector(0)) / sum(increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[$__range])))",
+          "expr": "100 * (1 - (sum(increase(http_server_requests_seconds_count{namespace=~\"$namespace\", app=\"$app\", status=~\"5..\", uri!~\"/actuator.*\"}[$__range])) or vector(0)) / (sum(increase(http_server_requests_seconds_count{namespace=~\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[$__range])) or vector(1)))",
           "instant": true
         }
       ],
@@ -172,7 +187,7 @@
       },
       "targets": [
         {
-          "expr": "sum(increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", status=~\"5..\", uri!~\"/actuator.*\"}[$__range])) or vector(0)",
+          "expr": "sum(increase(http_server_requests_seconds_count{namespace=~\"$namespace\", app=\"$app\", status=~\"5..\", uri!~\"/actuator.*\"}[$__range])) or vector(0)",
           "instant": true
         }
       ],
@@ -220,7 +235,7 @@
       },
       "targets": [
         {
-          "expr": "1000 * sum(increase(http_server_requests_seconds_sum{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[$__range])) / sum(increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[$__range]))",
+          "expr": "1000 * sum(increase(http_server_requests_seconds_sum{namespace=~\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[$__range])) / sum(increase(http_server_requests_seconds_count{namespace=~\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[$__range]))",
           "instant": true
         }
       ],
@@ -272,7 +287,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (code_class) (label_replace(rate(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[5m]), \"code_class\", \"$1xx\", \"status\", \"(\\\\d).*\"))",
+          "expr": "sum by (code_class) (label_replace(rate(http_server_requests_seconds_count{namespace=~\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[5m]), \"code_class\", \"$1xx\", \"status\", \"(\\\\d).*\"))",
           "legendFormat": "{{code_class}}"
         }
       ],
@@ -323,7 +338,7 @@
     {
       "type": "timeseries",
       "title": "Latency - Avg & Slowest Request",
-      "description": "Avg = exact mean (5m). Slowest = max single request. Avg flat + max spiking = outliers; both rising = systemic (check GC/CPU).",
+      "description": "Avg = exact mean over the window. 'Slowest' is Micrometer's http_server_requests_seconds_max, a DECAYING time-window max (~2 min), not the maximum over the whole dashboard range - it shows recent outliers only. For true tail latency, enable percentile histograms in the app and use histogram_quantile.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -336,11 +351,11 @@
       },
       "targets": [
         {
-          "expr": "1000 * sum(rate(http_server_requests_seconds_sum{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[5m])) / sum(rate(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[5m]))",
+          "expr": "1000 * sum(rate(http_server_requests_seconds_sum{namespace=~\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[5m])) / sum(rate(http_server_requests_seconds_count{namespace=~\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"}[5m]))",
           "legendFormat": "avg"
         },
         {
-          "expr": "1000 * max(http_server_requests_seconds_max{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"})",
+          "expr": "1000 * max(http_server_requests_seconds_max{namespace=~\"$namespace\", app=\"$app\", uri!~\"/actuator.*\"})",
           "legendFormat": "slowest"
         }
       ],
@@ -411,25 +426,25 @@
           "refId": "A",
           "instant": true,
           "format": "table",
-          "expr": "sum by (uri, method) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range]))"
+          "expr": "sum by (uri, method) (increase(http_server_requests_seconds_count{namespace=~\"$namespace\", app=\"$app\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range]))"
         },
         {
           "refId": "B",
           "instant": true,
           "format": "table",
-          "expr": "1000 * sum by (uri, method) (increase(http_server_requests_seconds_sum{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range])) / sum by (uri, method) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range]))"
+          "expr": "1000 * sum by (uri, method) (increase(http_server_requests_seconds_sum{namespace=~\"$namespace\", app=\"$app\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range])) / sum by (uri, method) (increase(http_server_requests_seconds_count{namespace=~\"$namespace\", app=\"$app\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range]))"
         },
         {
           "refId": "C",
           "instant": true,
           "format": "table",
-          "expr": "sum by (uri, method) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", app=\"$app\", status=~\"5..\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range]))"
+          "expr": "sum by (uri, method) (increase(http_server_requests_seconds_count{namespace=~\"$namespace\", app=\"$app\", status=~\"5..\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"}[$__range]))"
         },
         {
           "refId": "D",
           "instant": true,
           "format": "table",
-          "expr": "1000 * max by (uri, method) (http_server_requests_seconds_max{namespace=\"$namespace\", app=\"$app\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"})"
+          "expr": "1000 * max by (uri, method) (http_server_requests_seconds_max{namespace=~\"$namespace\", app=\"$app\", uri!~\"/actuator.*|UNKNOWN|root|/\\\\*\\\\*\"})"
         }
       ],
       "transformations": [
@@ -585,7 +600,7 @@
       },
       "targets": [
         {
-          "expr": "100 * sum(jvm_memory_used_bytes{namespace=\"$namespace\", app=\"$app\", area=\"heap\"}) / sum(jvm_memory_max_bytes{namespace=\"$namespace\", app=\"$app\", area=\"heap\"})"
+          "expr": "100 * sum(jvm_memory_used_bytes{namespace=~\"$namespace\", app=\"$app\", area=\"heap\"}) / sum(jvm_memory_max_bytes{namespace=~\"$namespace\", app=\"$app\", area=\"heap\"})"
         }
       ],
       "fieldConfig": {
@@ -637,7 +652,7 @@
       },
       "targets": [
         {
-          "expr": "100 * max(process_cpu_usage{namespace=\"$namespace\", app=\"$app\"})"
+          "expr": "100 * max(process_cpu_usage{namespace=~\"$namespace\", app=\"$app\"})"
         }
       ],
       "fieldConfig": {
@@ -672,7 +687,8 @@
           ]
         },
         "colorMode": "background"
-      }
+      },
+      "description": "JVM process CPU as reported by the JVM itself. Complementary to - not a substitute for - 'CPU % of Limit' below, which is the container view the kernel enforces and throttles against."
     },
     {
       "type": "stat",
@@ -689,7 +705,7 @@
       },
       "targets": [
         {
-          "expr": "100 * sum(rate(jvm_gc_pause_seconds_sum{namespace=\"$namespace\", app=\"$app\"}[5m])) / count(jvm_threads_live_threads{namespace=\"$namespace\", app=\"$app\"})"
+          "expr": "100 * max(rate(jvm_gc_pause_seconds_sum{namespace=~\"$namespace\", app=\"$app\"}[5m]))"
         }
       ],
       "fieldConfig": {
@@ -740,7 +756,7 @@
       },
       "targets": [
         {
-          "expr": "sum(jvm_threads_live_threads{namespace=\"$namespace\", app=\"$app\"})"
+          "expr": "sum(jvm_threads_live_threads{namespace=~\"$namespace\", app=\"$app\"})"
         }
       ],
       "fieldConfig": {
@@ -773,11 +789,11 @@
       },
       "targets": [
         {
-          "expr": "sum by (pod) (jvm_memory_used_bytes{namespace=\"$namespace\", app=\"$app\", area=\"heap\"})",
+          "expr": "sum by (pod) (jvm_memory_used_bytes{namespace=~\"$namespace\", app=\"$app\", area=\"heap\"})",
           "legendFormat": "used {{pod}}"
         },
         {
-          "expr": "sum by (pod) (jvm_memory_max_bytes{namespace=\"$namespace\", app=\"$app\", area=\"heap\"})",
+          "expr": "sum by (pod) (jvm_memory_max_bytes{namespace=~\"$namespace\", app=\"$app\", area=\"heap\"})",
           "legendFormat": "max {{pod}}"
         }
       ],
@@ -830,7 +846,7 @@
       },
       "targets": [
         {
-          "expr": "jvm_memory_used_bytes{namespace=\"$namespace\", app=\"$app\", area=\"heap\"}",
+          "expr": "jvm_memory_used_bytes{namespace=~\"$namespace\", app=\"$app\", area=\"heap\"}",
           "legendFormat": "{{pod}} {{id}}"
         }
       ],
@@ -859,11 +875,11 @@
       },
       "targets": [
         {
-          "expr": "sum by (pod, action) (rate(jvm_gc_pause_seconds_count{namespace=\"$namespace\", app=\"$app\"}[5m]))",
+          "expr": "sum by (pod, action) (rate(jvm_gc_pause_seconds_count{namespace=~\"$namespace\", app=\"$app\"}[5m]))",
           "legendFormat": "{{pod}} {{action}}"
         },
         {
-          "expr": "max by (pod) (jvm_gc_pause_seconds_max{namespace=\"$namespace\", app=\"$app\"})",
+          "expr": "max by (pod) (jvm_gc_pause_seconds_max{namespace=~\"$namespace\", app=\"$app\"})",
           "legendFormat": "{{pod}} max pause (s)"
         }
       ],
@@ -892,11 +908,11 @@
       },
       "targets": [
         {
-          "expr": "max by (pod) (jvm_threads_live_threads{namespace=\"$namespace\", app=\"$app\"})",
+          "expr": "max by (pod) (jvm_threads_live_threads{namespace=~\"$namespace\", app=\"$app\"})",
           "legendFormat": "threads {{pod}}"
         },
         {
-          "expr": "max by (pod) (jvm_classes_loaded_classes{namespace=\"$namespace\", app=\"$app\"})",
+          "expr": "max by (pod) (jvm_classes_loaded_classes{namespace=~\"$namespace\", app=\"$app\"})",
           "legendFormat": "classes {{pod}}"
         }
       ],
@@ -938,7 +954,7 @@
       },
       "targets": [
         {
-          "expr": "100 * kubernetes_io:container_cpu_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", pod_name=~\"$app-.*\", container_name!=\"istio-proxy\"}",
+          "expr": "100 * kubernetes_io:container_cpu_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=~\"$namespace\", pod_name=~\"$app-.*\", container_name!=\"istio-proxy\"}",
           "legendFormat": "{{pod_name}}"
         }
       ],
@@ -990,7 +1006,7 @@
       },
       "targets": [
         {
-          "expr": "100 * sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", pod=~\"$app-.*\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m])) / sum by (pod) (rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", pod=~\"$app-.*\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]))",
+          "expr": "100 * sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{namespace=~\"$namespace\", pod=~\"$app-.*\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m])) / sum by (pod) (rate(container_cpu_cfs_periods_total{namespace=~\"$namespace\", pod=~\"$app-.*\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]))",
           "legendFormat": "{{pod}}"
         }
       ],
@@ -1041,7 +1057,7 @@
       },
       "targets": [
         {
-          "expr": "100 * kubernetes_io:container_memory_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", pod_name=~\"$app-.*\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}",
+          "expr": "100 * kubernetes_io:container_memory_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=~\"$namespace\", pod_name=~\"$app-.*\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}",
           "legendFormat": "{{pod_name}}"
         }
       ],
@@ -1080,7 +1096,7 @@
     {
       "type": "timeseries",
       "title": "Container Restarts (per pod)",
-      "description": "Restarts within the window. Any repeating pattern = crash loop: kubectl describe pod -> Last State (OOMKilled vs Error).",
+      "description": "Restarts within the selected time range (not lifetime). Any repeating pattern = crash loop: kubectl describe pod -> Last State (OOMKilled vs Error).",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -1093,7 +1109,7 @@
       },
       "targets": [
         {
-          "expr": "increase(kubernetes_io:container_restart_count{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", pod_name=~\"$app-.*\", container_name!=\"istio-proxy\"}[1h])",
+          "expr": "increase(kubernetes_io:container_restart_count{monitored_resource=\"k8s_container\", namespace_name=~\"$namespace\", pod_name=~\"$app-.*\", container_name!=\"istio-proxy\"}[$__range])",
           "legendFormat": "{{pod_name}}"
         }
       ],
@@ -1136,7 +1152,7 @@
       },
       "targets": [
         {
-          "expr": "jvm_memory_used_bytes{namespace=\"$namespace\", app=\"$app\", area=\"nonheap\"}",
+          "expr": "jvm_memory_used_bytes{namespace=~\"$namespace\", app=\"$app\", area=\"nonheap\"}",
           "legendFormat": "{{pod}} {{id}}"
         }
       ],
@@ -1166,11 +1182,11 @@
       },
       "targets": [
         {
-          "expr": "jvm_buffer_memory_used_bytes{namespace=\"$namespace\", app=\"$app\"}",
+          "expr": "jvm_buffer_memory_used_bytes{namespace=~\"$namespace\", app=\"$app\"}",
           "legendFormat": "used {{pod}} {{id}}"
         },
         {
-          "expr": "jvm_buffer_total_capacity_bytes{namespace=\"$namespace\", app=\"$app\"}",
+          "expr": "jvm_buffer_total_capacity_bytes{namespace=~\"$namespace\", app=\"$app\"}",
           "legendFormat": "capacity {{pod}} {{id}}"
         }
       ],
@@ -1200,11 +1216,11 @@
       },
       "targets": [
         {
-          "expr": "process_files_open_files{namespace=\"$namespace\", app=\"$app\"}",
+          "expr": "process_files_open_files{namespace=~\"$namespace\", app=\"$app\"}",
           "legendFormat": "open {{pod}}"
         },
         {
-          "expr": "process_files_max_files{namespace=\"$namespace\", app=\"$app\"}",
+          "expr": "process_files_max_files{namespace=~\"$namespace\", app=\"$app\"}",
           "legendFormat": "max {{pod}}"
         }
       ],
@@ -1257,7 +1273,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (level) (rate(logback_events_total{namespace=\"$namespace\", app=\"$app\", level=~\"error|warn\"}[5m]))",
+          "expr": "sum by (level) (rate(logback_events_total{namespace=~\"$namespace\", app=\"$app\", level=~\"error|warn\"}[5m]))",
           "legendFormat": "{{level}}"
         }
       ],
@@ -1303,6 +1319,6 @@
       }
     }
   ],
-  "description": "v3 - 2026-08-11: adds JVM internals row (metaspace/non-heap, buffer pools, file descriptors, log events) so this supersedes the community Spring Boot 3.x dashboard. Sizing panels show % of limit with threshold lines; traffic-light colors; per-pod restarts.",
-  "version": 3
+  "description": "v10 - 2026-08-12: success-rate denominator guarded against zero traffic; restarts honour dashboard range; decaying-max and process-CPU semantics documented. pod-name grouping regex reverted to Deployment-only (all workloads are Deployments); GC % is max (worst replica). GC % now max (worst replica) for consistency with other resource columns; pod-name grouping regex also matches StatefulSet-style names. GC Time % now uses the standard avg(rate(jvm_gc_pause_seconds_sum)) form (seconds-per-second = fraction of wall clock), replacing a thread-count divisor. namespace options are eod, eod1, eod-platform (gateway); eod/eod1 preselected. namespace list filtered to eod/eod1 and both preselected by default. namespace multi-select supported; app list spans selected namespaces. adds JVM internals row (metaspace/non-heap, buffer pools, file descriptors, log events) so this supersedes the community Spring Boot 3.x dashboard. Sizing panels show % of limit with threshold lines; traffic-light colors; per-pod restarts.",
+  "version": 10
 }
