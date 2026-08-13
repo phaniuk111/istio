@@ -47,7 +47,22 @@
         "label": "Namespace",
         "refresh": 2,
         "sort": 1,
-        "current": {}
+        "current": {
+          "selected": true,
+          "text": [
+            "eod",
+            "eod1"
+          ],
+          "value": [
+            "eod",
+            "eod1"
+          ]
+        },
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "regex": "/^(eod|eod1|eod-platform)$/",
+        "description": "Tenant namespaces. eod-platform hosts the Istio gateway - it has no Spring Boot app metrics, so app/JVM columns show '-' for it while container and pool metrics still apply."
       },
       {
         "name": "nodepool_filter",
@@ -108,61 +123,61 @@
           "refId": "A",
           "instant": true,
           "format": "table",
-          "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[5m]))"
+          "expr": "sum by (namespace, app) (rate(http_server_requests_seconds_count{namespace=~\"$namespace\", uri!~\"/actuator.*\"}[5m]))"
         },
         {
           "refId": "B",
           "instant": true,
           "format": "table",
-          "expr": "sum by (app) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", status=~\"5..\", uri!~\"/actuator.*\"}[$__range]))"
+          "expr": "sum by (namespace, app) (increase(http_server_requests_seconds_count{namespace=~\"$namespace\", status=~\"5..\", uri!~\"/actuator.*\"}[$__range]))"
         },
         {
           "refId": "C",
           "instant": true,
           "format": "table",
-          "expr": "1000 * sum by (app) (increase(http_server_requests_seconds_sum{namespace=\"$namespace\", uri!~\"/actuator.*\"}[$__range])) / sum by (app) (increase(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[$__range]))"
+          "expr": "1000 * sum by (namespace, app) (increase(http_server_requests_seconds_sum{namespace=~\"$namespace\", uri!~\"/actuator.*\"}[$__range])) / sum by (namespace, app) (increase(http_server_requests_seconds_count{namespace=~\"$namespace\", uri!~\"/actuator.*\"}[$__range]))"
         },
         {
           "refId": "D",
           "instant": true,
           "format": "table",
-          "expr": "100 * sum by (app) (jvm_memory_used_bytes{namespace=\"$namespace\", area=\"heap\"}) / sum by (app) (jvm_memory_max_bytes{namespace=\"$namespace\", area=\"heap\"})"
+          "expr": "100 * sum by (namespace, app) (jvm_memory_used_bytes{namespace=~\"$namespace\", area=\"heap\"}) / sum by (namespace, app) (jvm_memory_max_bytes{namespace=~\"$namespace\", area=\"heap\"})"
         },
         {
           "refId": "E",
           "instant": true,
           "format": "table",
-          "expr": "100 * sum by (app) (rate(jvm_gc_pause_seconds_sum{namespace=\"$namespace\"}[5m])) / count by (app) (jvm_threads_live_threads{namespace=\"$namespace\"})"
+          "expr": "100 * max by (namespace, app) (rate(jvm_gc_pause_seconds_sum{namespace=~\"$namespace\"}[5m]))"
         },
         {
           "refId": "F",
           "instant": true,
           "format": "table",
-          "expr": "100 * max by (app) (label_replace(kubernetes_io:container_memory_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))"
+          "expr": "100 * max by (namespace, app) (label_replace(kubernetes_io:container_memory_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=~\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))"
         },
         {
           "refId": "G",
           "instant": true,
           "format": "table",
-          "expr": "100 * max by (app) (label_replace(kubernetes_io:container_memory_request_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))"
+          "expr": "100 * max by (namespace, app) (label_replace(kubernetes_io:container_memory_request_utilization{monitored_resource=\"k8s_container\", namespace_name=~\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))"
         },
         {
           "refId": "H",
           "instant": true,
           "format": "table",
-          "expr": "100 * max by (app) (label_replace(max_over_time(kubernetes_io:container_cpu_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}[5m]), \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))"
+          "expr": "100 * max by (namespace, app) (label_replace(max_over_time(kubernetes_io:container_cpu_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=~\"$namespace\", container_name!=\"istio-proxy\"}[5m]), \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))"
         },
         {
           "refId": "I",
           "instant": true,
           "format": "table",
-          "expr": "100 * max by (app) (label_replace(rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")) / max by (app) (label_replace(rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))"
+          "expr": "100 * max by (namespace, app) (label_replace(rate(container_cpu_cfs_throttled_periods_total{namespace=~\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")) / max by (namespace, app) (label_replace(rate(container_cpu_cfs_periods_total{namespace=~\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))"
         },
         {
           "refId": "J",
           "instant": true,
           "format": "table",
-          "expr": "max by (app) (label_replace(increase(kubernetes_io:container_restart_count{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}[$__range]), \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))"
+          "expr": "max by (namespace, app) (label_replace(increase(kubernetes_io:container_restart_count{monitored_resource=\"k8s_container\", namespace_name=~\"$namespace\", container_name!=\"istio-proxy\"}[$__range]), \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\"))"
         }
       ],
       "transformations": [
@@ -174,17 +189,18 @@
           "id": "organize",
           "options": {
             "indexByName": {
-              "app": 0,
-              "Value #A": 1,
-              "Value #B": 2,
-              "Value #C": 3,
-              "Value #D": 4,
-              "Value #E": 5,
-              "Value #F": 6,
-              "Value #G": 7,
-              "Value #H": 8,
-              "Value #I": 9,
-              "Value #J": 10
+              "namespace": 0,
+              "app": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "Value #C": 4,
+              "Value #D": 5,
+              "Value #E": 6,
+              "Value #F": 7,
+              "Value #G": 8,
+              "Value #H": 9,
+              "Value #I": 10,
+              "Value #J": 11
             },
             "renameByName": {
               "app": "Service",
@@ -192,12 +208,13 @@
               "Value #B": "5xx (range)",
               "Value #C": "Avg Latency",
               "Value #D": "Heap %",
-              "Value #E": "GC %",
+              "Value #E": "GC % (worst)",
               "Value #F": "Mem % of Limit",
               "Value #G": "Mem % of Request",
               "Value #H": "CPU % of Limit (5m max)",
               "Value #I": "CPU Throttle %",
-              "Value #J": "Restarts (range)"
+              "Value #J": "Restarts (range)",
+              "namespace": "Namespace"
             },
             "excludeByName": {
               "Time": true
@@ -378,7 +395,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "GC %"
+              "options": "GC % (worst)"
             },
             "properties": [
               {
@@ -980,11 +997,11 @@
       },
       "targets": [
         {
-          "expr": "100 * sum(container_memory_working_set_bytes{namespace=\"$namespace\", container!=\"\", container!=\"POD\"}) / sum(last_over_time(kubernetes_io:node_memory_allocatable_bytes{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"}[10m]))",
+          "expr": "100 * sum(container_memory_working_set_bytes{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}) / sum(last_over_time(kubernetes_io:node_memory_allocatable_bytes{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"}[10m]))",
           "legendFormat": "memory % of pool"
         },
         {
-          "expr": "100 * sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", container!=\"\", container!=\"POD\"}[5m])) / sum(last_over_time(kubernetes_io:node_cpu_allocatable_cores{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"}[10m]))",
+          "expr": "100 * sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", container!=\"\", container!=\"POD\"}[5m])) / sum(last_over_time(kubernetes_io:node_cpu_allocatable_cores{monitored_resource=\"k8s_node\", node_name=~\".*$nodepool_filter.*\"}[10m]))",
           "legendFormat": "cpu % of pool"
         }
       ],
@@ -1050,8 +1067,8 @@
       },
       "targets": [
         {
-          "expr": "topk(8, 100 * max by (app) (label_replace(kubernetes_io:container_cpu_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))",
-          "legendFormat": "{{app}}"
+          "expr": "topk(8, 100 * max by (namespace, app) (label_replace(kubernetes_io:container_cpu_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=~\"$namespace\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))",
+          "legendFormat": "{{namespace}}/{{app}}"
         }
       ],
       "fieldConfig": {
@@ -1082,8 +1099,8 @@
       },
       "targets": [
         {
-          "expr": "topk(8, 100 * max by (app) (label_replace(rate(container_cpu_cfs_throttled_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")) / max by (app) (label_replace(rate(container_cpu_cfs_periods_total{namespace=\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))",
-          "legendFormat": "{{app}}"
+          "expr": "topk(8, 100 * max by (namespace, app) (label_replace(rate(container_cpu_cfs_throttled_periods_total{namespace=~\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")) / max by (namespace, app) (label_replace(rate(container_cpu_cfs_periods_total{namespace=~\"$namespace\", container!=\"\", container!=\"istio-proxy\", container!=\"POD\"}[5m]), \"app\", \"$1\", \"pod\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))",
+          "legendFormat": "{{namespace}}/{{app}}"
         }
       ],
       "fieldConfig": {
@@ -1113,8 +1130,8 @@
       },
       "targets": [
         {
-          "expr": "topk(8, 100 * max by (app) (label_replace(kubernetes_io:container_memory_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))",
-          "legendFormat": "{{app}}"
+          "expr": "topk(8, 100 * max by (namespace, app) (label_replace(kubernetes_io:container_memory_limit_utilization{monitored_resource=\"k8s_container\", namespace_name=~\"$namespace\", memory_type=\"non-evictable\", container_name!=\"istio-proxy\"}, \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))",
+          "legendFormat": "{{namespace}}/{{app}}"
         }
       ],
       "fieldConfig": {
@@ -1145,8 +1162,8 @@
       },
       "targets": [
         {
-          "expr": "topk(8, max by (app) (label_replace(increase(kubernetes_io:container_restart_count{monitored_resource=\"k8s_container\", namespace_name=\"$namespace\", container_name!=\"istio-proxy\"}[1h]), \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))",
-          "legendFormat": "{{app}}"
+          "expr": "topk(8, max by (namespace, app) (label_replace(increase(kubernetes_io:container_restart_count{monitored_resource=\"k8s_container\", namespace_name=~\"$namespace\", container_name!=\"istio-proxy\"}[1h]), \"app\", \"$1\", \"pod_name\", \"(.+)-[a-z0-9]+-[a-z0-9]+$\")))",
+          "legendFormat": "{{namespace}}/{{app}}"
         }
       ],
       "fieldConfig": {
@@ -1175,12 +1192,12 @@
       },
       "targets": [
         {
-          "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", uri!~\"/actuator.*\"}[5m]))",
-          "legendFormat": "req/s {{app}}"
+          "expr": "sum by (namespace, app) (rate(http_server_requests_seconds_count{namespace=~\"$namespace\", uri!~\"/actuator.*\"}[5m]))",
+          "legendFormat": "req/s {{namespace}}/{{app}}"
         },
         {
-          "expr": "sum by (app) (rate(http_server_requests_seconds_count{namespace=\"$namespace\", status=~\"5..\"}[5m])) > 0",
-          "legendFormat": "5xx/s {{app}}"
+          "expr": "sum by (namespace, app) (rate(http_server_requests_seconds_count{namespace=~\"$namespace\", status=~\"5..\"}[5m])) > 0",
+          "legendFormat": "5xx/s {{namespace}}/{{app}}"
         }
       ],
       "fieldConfig": {
@@ -1194,6 +1211,6 @@
       }
     }
   ],
-  "description": "v5 - 2026-08-11: service names in the table link through to Service Detail (carries namespace + time range). traffic-light colors, nodepool row (capacity/headroom, 10m-lookback counts), footprint as % of pool with threshold lines, neutral capacity stats, restarts-in-range column, CPU 5m-max columns.",
-  "version": 5
+  "description": "v11 - 2026-08-12: pod-name grouping regex reverted to Deployment-only (all workloads are Deployments); GC % is max (worst replica). GC % now max (worst replica) for consistency with other resource columns; pod-name grouping regex also matches StatefulSet-style names. GC Time % now uses the standard avg(rate(jvm_gc_pause_seconds_sum)) form (seconds-per-second = fraction of wall clock), replacing a thread-count divisor. namespace options are eod, eod1, eod-platform (gateway); eod/eod1 preselected. namespace list filtered to eod/eod1 and both preselected by default. namespace is multi-select (All); services grouped by namespace+app with a Namespace column. service names in the table link through to Service Detail (carries namespace + time range). traffic-light colors, nodepool row (capacity/headroom, 10m-lookback counts), footprint as % of pool with threshold lines, neutral capacity stats, restarts-in-range column, CPU 5m-max columns.",
+  "version": 11
 }
