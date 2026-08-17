@@ -1,0 +1,197 @@
+# Application Metrics on GKE — Enablement Guide
+
+> **Status:** Live in dev · rolling out to remaining services
+> **Owner:** EOD Platform
+> **Dashboards:** Fleet Overview · Service Detail (Grafana → folder `173952-1_eod`)
+
+---
+
+## TL;DR for developers
+
+To get your service's metrics into Grafana, add **three annotation lines** to your Helm chart.
+That's it. No code change, no new dependency, no port change.
+
+```yaml
+# helm/<your-service>/templates/deployment.yaml
+spec:
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"                 # your app's port
+        prometheus.io/path: /actuator/prometheus
+```
+
+Your pods also need two labels (most charts already have them):
+
+```yaml
+      labels:
+        app: <your-service-name>              # used to group metrics per deployment
+        prometheus-metric-collection: enable  # selects the pod for scraping
+```
+
+Deploy as normal. Metrics appear in Grafana within about two minutes.
+
+---
+
+## 1. The problem we solved
+
+Application metrics were not reaching Google Managed Prometheus. The scrape showed `up=0` even
+though `/actuator/prometheus` returned perfectly valid metrics when called by hand.
+
+**Root cause:** the metrics collector runs *outside* the service mesh and scrapes pods over plain
+HTTP. Under our mesh's STRICT mTLS policy, the Istio sidecar intercepts that connection, expects a
+TLS handshake, gets plain HTTP, and drops it. The request never reached the application.
+
+Manual testing worked because it went through the ingress gateway, which is *inside* the mesh and
+encrypts the final hop on the caller's behalf — so the failure was invisible to normal testing.
+
+**Why we didn't just exclude the port from the mesh:** our services serve application traffic and
+the actuator on the *same* port. Excluding it would have removed all inbound traffic from mTLS and
+policy enforcement — trading a monitoring gap for a security gap.
+
+---
+
+## 2. How it works now
+
+We use **Istio metrics merging** — the mechanism Istio provides for exactly this situation.
+
+The Istio sidecar's agent fetches your application's metrics over **localhost inside the pod**,
+which never touches the mesh's encryption layer. It merges them with the proxy's own metrics and
+publishes the combined set on **port 15020**, a port Istio deliberately leaves open to plaintext
+scrapers. The collector reads that.
+
+**Nothing about your application's security changes.** Port 8080 keeps full mTLS and policy
+enforcement. Only read-only metrics are exposed on 15020, exactly as Istio's own proxy metrics
+already were.
+
+### Data flow
+
+*(Attach `metrics-dataflow.svg` here — see the diagram file accompanying this page.)*
+
+1. **Spring Boot app** exposes metrics at `:8080/actuator/prometheus` (Micrometer, built in)
+2. **Istio agent** (in the sidecar) fetches them over `localhost` — no mTLS involved
+3. **Merged endpoint** `:15020/stats/prometheus` serves app metrics + proxy metrics together
+4. **GMP collector** scrapes `:15020`, guided by the `PodMonitoring` resource
+5. **Cloud Monitoring** stores the time series
+6. **Grafana** queries them with PromQL and renders the dashboards
+
+The path the collector used to take — straight to `:8080` — is the one the sidecar was blocking.
+
+---
+
+## 3. Platform-side configuration (already done, for reference)
+
+One `PodMonitoring` resource per namespace tells the collector what to scrape:
+
+```yaml
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: eod-pod-monitor
+  namespace: eod
+spec:
+  selector:
+    matchLabels:
+      prometheus-metric-collection: enable
+  endpoints:
+    - port: 15020                 # the merged endpoint, not the app port
+      path: /stats/prometheus
+      interval: 30s
+  targetLabels:
+    fromPod:
+      - from: prometheus-metric-collection
+        to: custom_metrics_label
+      - from: app
+        to: app                   # lets us group metrics by deployment
+```
+
+**Note:** the `prometheus.io/*` annotations developers add are read by the **Istio agent**, not by
+the collector. The collector only reads `PodMonitoring`. Both pieces are required — neither works
+on its own.
+
+Also expected and harmless: Istio **rewrites** those annotations on the running pod to point at
+15020, and stores your original values in the sidecar's `ISTIO_PROMETHEUS_ANNOTATIONS` variable.
+Seeing the rewrite means merging is working.
+
+---
+
+## 4. What you get, per service
+
+**Traffic** — request rate, error rate, latency, and a per-endpoint breakdown showing which API is
+slow or failing
+
+**JVM** — heap usage and per-pool detail (leak detection), GC pause time, threads, loaded classes,
+metaspace, direct buffers, open file descriptors
+
+**Container** — CPU and memory against your configured limits and requests, CPU throttling, and
+restart counts
+
+All of it per deployment, across every replica, with drill-down to individual pods.
+
+### Two dashboards
+
+| Dashboard | Use it for |
+|---|---|
+| **Fleet Overview** | One row per service. Scan for red, spot which service is unhappy, check nodepool headroom |
+| **Service Detail** | Drill-down for one service: which endpoint, which pod, which resource |
+
+Click a service name in Fleet Overview to jump straight to its detail view.
+
+---
+
+## 5. Verifying your service after deployment
+
+```bash
+# 1. metrics are being merged
+kubectl port-forward deploy/<your-service> -n <namespace> 15020:15020
+curl -s http://localhost:15020/stats/prometheus | grep jvm_memory_used_bytes
+
+# 2. the agent picked up your annotations
+kubectl get pod -n <namespace> -l app=<your-service> -o yaml \
+  | grep -A1 ISTIO_PROMETHEUS_ANNOTATIONS
+# expected: {"scrape":"true","path":"/actuator/prometheus","port":"8080"}
+```
+
+Then open Fleet Overview — your service should appear with populated columns.
+
+**Reading the table:** a `-` means "no data yet" (annotations not deployed).
+Green = healthy, amber = watch, red = act.
+
+---
+
+## 6. Early findings from the dev environment
+
+Within a day of the dashboards going live:
+
+- **One service had accumulated 183 container restarts** — crash-looping, previously unnoticed
+- **Several services are CPU-throttled**, hitting 100% of their CPU limit in repeated bursts, while
+  the nodepool sits at ~13% CPU used. Capacity is available; the per-container limits are too tight
+- **Memory is heavily over-provisioned fleet-wide** — services use roughly 7–17% of their memory
+  limit and ~30% of their memory request. Limits can likely be reduced substantially, freeing
+  nodepool capacity
+
+---
+
+## 7. Known gaps (roadmap)
+
+| Gap | Impact | Fix |
+|---|---|---|
+| Gateway-rejected requests invisible | An ingress outage looks like "no traffic", not an error | Enable Istio telemetry via the Telemetry API (platform) |
+| Outbound calls not measured | For services that mainly *call out*, most of their work is unmeasured | Use Spring-managed HTTP clients; metric then appears automatically |
+| `@Scheduled` jobs invisible | A job that silently stops running produces no signal at all | Add `@Timed` to scheduled methods (~10 lines per service) |
+| BigQuery calls invisible | BQ read latency and failures are not tracked | Wrap the call in a Micrometer `Timer` |
+| No latency percentiles | Only average and a short-window max are available | Enable percentile histograms in app config |
+
+---
+
+## 8. Developer checklist
+
+- [ ] Add the three `prometheus.io/*` annotations to the deployment template
+- [ ] Confirm pods have `app` and `prometheus-metric-collection` labels
+- [ ] Deploy through the normal pipeline
+- [ ] Verify with the two commands in section 5
+- [ ] Check your service appears in Fleet Overview
+- [ ] *(If you have scheduled jobs or outbound calls)* review the instrumentation guide
+
+**Questions:** #eod-platform
