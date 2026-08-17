@@ -1,0 +1,48 @@
+%% Metrics data flow: Spring Boot on GKE with ASM + Google Managed Prometheus
+%% No HTML in labels - renders correctly when htmlLabels is disabled.
+%% Line breaks use the \n escape, which Mermaid handles natively.
+
+flowchart LR
+
+  subgraph POD["Kubernetes Pod - inside the service mesh"]
+    direction TB
+    APP["Spring Boot app\nMicrometer / Actuator\n\n:8080/actuator/prometheus"]
+    SIDECAR["Istio sidecar\npilot-agent + Envoy\nmerges app + proxy metrics\n\n:15020/stats/prometheus"]
+    APP -- "1 - fetched over localhost\nnever leaves the pod" --> SIDECAR
+  end
+
+  subgraph GCP["Google Cloud"]
+    direction TB
+    COLLECTOR["GMP collector\nruns outside the mesh\nscrapes every 30s"]
+    STORE["Cloud Monitoring\ntime-series storage"]
+    COLLECTOR -- "3 - ingest" --> STORE
+  end
+
+  GRAFANA["Grafana\n\nFleet Overview\nService Detail"]
+
+  SIDECAR -- "2 - plaintext scrape of :15020" --> COLLECTOR
+  STORE -- "4 - PromQL" --> GRAFANA
+
+  DEV["DEPLOYMENT TEMPLATE - developers add\n\nlabels:\n  app: your-service\n  prometheus-metric-collection: enable\n\nannotations:\n  prometheus.io/scrape: 'true'\n  prometheus.io/port: '8080'\n  prometheus.io/path: /actuator/prometheus"]
+
+  PM["PODMONITORING - platform-managed\n\nselector:\n  prometheus-metric-collection: enable\n\nendpoints:\n  port: 15020\n  path: /stats/prometheus\n  interval: 30s"]
+
+  DEV -. "tells the agent\nwhere to fetch" .-> SIDECAR
+  PM  -. "tells the collector\nwhat to scrape" .-> COLLECTOR
+
+  classDef app    fill:#f4faf2,stroke:#4c8c30,stroke-width:2px,color:#14300a
+  classDef mesh   fill:#eaf1f9,stroke:#2f6fae,stroke-width:2px,color:#0d2c47
+  classDef infra  fill:#ffffff,stroke:#9aa9b8,stroke-width:1.5px,color:#1a2733
+  classDef viz    fill:#fff7ec,stroke:#d1810f,stroke-width:2px,color:#4a2c05
+  classDef cfgDev fill:#f4faf2,stroke:#4c8c30,stroke-width:1.5px,stroke-dasharray:4 3,color:#14300a
+  classDef cfgOps fill:#fff7ec,stroke:#d1810f,stroke-width:1.5px,stroke-dasharray:4 3,color:#4a2c05
+
+  class APP app
+  class SIDECAR mesh
+  class COLLECTOR,STORE infra
+  class GRAFANA viz
+  class DEV cfgDev
+  class PM cfgOps
+
+  style POD fill:#f7f9fb,stroke:#c6d2de,stroke-width:1.5px,color:#3d4b5c
+  style GCP fill:#fbfcfd,stroke:#c6d2de,stroke-width:1.5px,color:#3d4b5c
