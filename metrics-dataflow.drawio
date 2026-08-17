@@ -1,0 +1,117 @@
+<mxfile host="app.diagrams.net" modified="2026-08-17T12:00:00.000Z" agent="Claude" version="24.0.0" type="device">
+  <diagram id="metrics-dataflow" name="Metrics Data Flow">
+    <mxGraphModel dx="1400" dy="800" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="800" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="How application metrics reach Grafana" style="text;html=1;fontSize=22;fontStyle=1;fontColor=#1A2733;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="40" y="24" width="700" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="Spring Boot on GKE with Anthos Service Mesh and Google Managed Prometheus" style="text;html=1;fontSize=13;fontColor=#5B6B7C;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="40" y="52" width="700" height="22" as="geometry" />
+        </mxCell>
+
+        <!-- POD container -->
+        <mxCell id="pod" value="Kubernetes Pod — inside the service mesh" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7F9FB;strokeColor=#C6D2DE;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=16;spacingTop=10;fontSize=13;fontStyle=1;fontColor=#3D4B5C;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="500" height="270" as="geometry" />
+        </mxCell>
+
+        <!-- App container -->
+        <mxCell id="app" value="&lt;b&gt;Spring Boot app&lt;/b&gt;&lt;br&gt;&lt;font color='#5B6B7C'&gt;Micrometer / Actuator&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4FAF2;strokeColor=#4C8C30;strokeWidth=2;verticalAlign=top;spacingTop=12;fontSize=13;fontColor=#14300A;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="70" y="150" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="appEndpoint" value=":8080/actuator/prometheus" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF6EA;strokeColor=none;fontSize=11;fontFamily=Courier New;fontColor=#2C5C1C;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="84" y="220" width="172" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Sidecar -->
+        <mxCell id="sidecar" value="&lt;b&gt;Istio sidecar&lt;/b&gt;&lt;br&gt;&lt;font color='#5B6B7C'&gt;pilot-agent + Envoy&lt;/font&gt;&lt;br&gt;&lt;br&gt;merges app metrics&lt;br&gt;with proxy metrics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EAF1F9;strokeColor=#2F6FAE;strokeWidth=2;verticalAlign=top;spacingTop=12;fontSize=13;fontColor=#0D2C47;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="310" y="150" width="200" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="mergedEndpoint" value=":15020/stats/prometheus" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=none;fontSize=11;fontFamily=Courier New;fontColor=#12406B;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="324" y="262" width="172" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- GCP container -->
+        <mxCell id="gcp" value="Google Cloud" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBFCFD;strokeColor=#C6D2DE;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=16;spacingTop=10;fontSize=13;fontStyle=1;fontColor=#3D4B5C;arcSize=6;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="620" y="100" width="290" height="270" as="geometry" />
+        </mxCell>
+
+        <mxCell id="collector" value="&lt;b&gt;GMP collector&lt;/b&gt;&lt;br&gt;&lt;font color='#5B6B7C'&gt;runs outside the mesh&lt;br&gt;scrapes every 30s&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#9AA9B8;strokeWidth=2;verticalAlign=top;spacingTop=12;fontSize=13;fontColor=#1A2733;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="650" y="150" width="230" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="store" value="&lt;b&gt;Cloud Monitoring&lt;/b&gt;&lt;br&gt;&lt;font color='#5B6B7C'&gt;time-series storage&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#9AA9B8;strokeWidth=2;verticalAlign=top;spacingTop=12;fontSize=13;fontColor=#1A2733;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="650" y="270" width="230" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Grafana -->
+        <mxCell id="grafana" value="&lt;b&gt;Grafana&lt;/b&gt;&lt;br&gt;&lt;br&gt;Fleet Overview&lt;br&gt;Service Detail" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7EC;strokeColor=#D1810F;strokeWidth=2;verticalAlign=top;spacingTop=14;fontSize=13;fontColor=#4A2C05;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="990" y="180" width="220" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Flow arrows -->
+        <mxCell id="e1" value="1 · fetched over localhost&#10;never leaves the pod" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#1F9254;strokeWidth=2.5;fontSize=11;fontColor=#1F9254;fontStyle=1;endArrow=blockThin;endFill=1;verticalAlign=bottom;" edge="1" parent="1" source="app" target="sidecar">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e2" value="2 · plaintext scrape of :15020" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#1F9254;strokeWidth=2.5;fontSize=11;fontColor=#1F9254;fontStyle=1;endArrow=blockThin;endFill=1;verticalAlign=bottom;" edge="1" parent="1" source="sidecar" target="collector">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e3" value="3 · ingest" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#3D4B5C;strokeWidth=2;fontSize=11;fontColor=#5B6B7C;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="collector" target="store">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e4" value="4 · PromQL" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#3D4B5C;strokeWidth=2;fontSize=11;fontColor=#5B6B7C;endArrow=blockThin;endFill=1;verticalAlign=bottom;" edge="1" parent="1" source="store" target="grafana">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- DEV config box -->
+        <mxCell id="dev" value="&lt;b&gt;What developers add to the deployment template&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4FAF2;strokeColor=#4C8C30;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=16;spacingTop=12;fontSize=13;fontColor=#14300A;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="420" width="540" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="devCode" value="spec.template.metadata:&#10;  labels:&#10;    app: your-service&#10;    prometheus-metric-collection: enable&#10;  annotations:&#10;    prometheus.io/scrape: &quot;true&quot;&#10;    prometheus.io/port:   &quot;8080&quot;&#10;    prometheus.io/path:   /actuator/prometheus" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D6E6CF;align=left;verticalAlign=top;spacingLeft=12;spacingTop=8;fontSize=11;fontFamily=Courier New;fontColor=#2C5C1C;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="60" y="455" width="500" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="devNote1" value="• &lt;b&gt;labels&lt;/b&gt; — selected by PodMonitoring, and group metrics per deployment" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#3D4B5C;" vertex="1" parent="1">
+          <mxGeometry x="60" y="612" width="500" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="devNote2" value="• &lt;b&gt;annotations&lt;/b&gt; — tell the Istio agent where to fetch app metrics" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#3D4B5C;" vertex="1" parent="1">
+          <mxGeometry x="60" y="632" width="500" height="18" as="geometry" />
+        </mxCell>
+
+        <!-- PODMONITORING config box -->
+        <mxCell id="pm" value="&lt;b&gt;PodMonitoring — platform-managed, one per namespace&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7EC;strokeColor=#D1810F;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=16;spacingTop=12;fontSize=13;fontColor=#4A2C05;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="620" y="420" width="590" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="pmCode" value="kind: PodMonitoring&#10;spec:&#10;  selector:&#10;    matchLabels:&#10;      prometheus-metric-collection: enable&#10;  endpoints:&#10;    - port: 15020&#10;      path: /stats/prometheus&#10;      interval: 30s" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F0DCC0;align=left;verticalAlign=top;spacingLeft=12;spacingTop=8;fontSize=11;fontFamily=Courier New;fontColor=#3D4B5C;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="640" y="455" width="550" height="165" as="geometry" />
+        </mxCell>
+        <mxCell id="pmNote" value="• targetLabels promotes the pod's &lt;i&gt;app&lt;/i&gt; label onto every metric — enables per-deployment grouping" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#3D4B5C;" vertex="1" parent="1">
+          <mxGeometry x="640" y="628" width="550" height="18" as="geometry" />
+        </mxCell>
+
+        <!-- config -> component dashed arrows -->
+        <mxCell id="eDev" value="tells the agent where to fetch" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#4C8C30;strokeWidth=2;dashed=1;fontSize=10;fontColor=#4C8C30;endArrow=blockThin;endFill=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="dev" target="sidecar">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="410" y="400" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="ePm" value="tells the collector what to scrape" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#D1810F;strokeWidth=2;dashed=1;fontSize=10;fontColor=#D1810F;endArrow=blockThin;endFill=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="pm" target="collector">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="765" y="395" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
